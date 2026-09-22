@@ -1,11 +1,11 @@
-name: go-foundation
+name: go-validation
 on:
   push:
   pull_request:
 permissions:
   contents: read
 jobs:
-  compile-doc-package:
+  credential-contracts:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -16,5 +16,5 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - run: go vet .
-      - run: go test .
+      - run: go vet ./...
+      - run: go test -race ./...

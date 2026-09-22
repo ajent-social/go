@@ -1,5 +1,11 @@
-# Bootstrap status
+# Bootstrap and first implementation status
 
-The repository has a single Go module, documentation package, CI and a proposed first capability contract. No external dependencies are needed, so no go.sum exists. No private implementation is copied. No runtime tests or consumer adoption are claimed.
+The repository foundation is complete. The first candidate runtime slice now
+lives in servicecred and servicecred/boltstore. Its added bbolt dependency and
+Go sums are intentional; see provenance-servicecred.md for rationale and source
+attribution. Original lifecycle code and the public-source-derived persistence
+adapter contain no copied private implementation.
 
-Next gate: settle the service-credential persistence/authority contract, implement original code with cleared provenance, then integrate narrowly into an existing application and record verifiable results. Human review precedes security-sensitive API promotion.
+Runtime test execution and consumer verification are tracked separately in
+servicecred-worklog.md. This branch does not promote a capability, release an API,
+or claim production deployment. Human review remains required.
