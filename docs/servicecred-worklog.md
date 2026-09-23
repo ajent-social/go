@@ -36,12 +36,15 @@ evidence review.
 
 ## 2026-09-23 — review corrections
 
-At source revision `9c6cfafc942b63df4e032d89c818c5765c29b1b1`, local
-`go test -race ./...` and `go vet ./...` passed. Cross-compilation checks passed
-for Darwin/arm64, Windows/amd64 and AIX/ppc64. Tests now cover alternate secret
-formatting and slog, lock cancellation, bounded revoke progress under continuous
-same-process and cross-process verification, read-only verification, relative
-paths, revoked metadata timestamps, and caller/store scope isolation.
+At source revision `059b954de5bf08220ee10b31f0680c74c092f9dc`, local
+`go test -race ./...` and `go vet ./...` passed. Compile-only checks passed for
+Darwin/arm64, Windows/amd64, AIX/ppc64 and illumos/amd64. Tests now cover
+alternate secret formatting and slog, lock cancellation, bounded revoke
+progress under continuous same-process and cross-process verification,
+read-only verification, migration of databases without sidecar lock files,
+relative paths, revoked metadata timestamps, and caller/store scope isolation.
+The Windows-only test asserting `errors.ErrUnsupported` is covered by a native
+Windows CI job.
 
 The restricted consumer run above used an earlier candidate revision
 (`b482cdf508200db1abc1a182421d8f5c8ddaac90`); that consumer has not been
