@@ -14,6 +14,6 @@ expanding. No billing provider client, universal user model or UI framework.
 - [ ] Human maintainer reviews the security API and evidence.
 - [ ] Decide lifecycle promotion after review; never infer it from tests alone.
 
-Next consumer gate: independent credentials must not adopt another credential's
-transport session, lease or cancellation authority. Revocation must survive a
-process restart; real browser fixture execution must preserve origin checks.
+Next independent consumer gate: credentials must not adopt another credential's
+transport session, lease or cancellation authority. Verify restart-safe
+revocation and origin checks using public, independently reproducible evidence.

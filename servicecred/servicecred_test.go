@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,7 +38,7 @@ func setup(t *testing.T) (*servicecred.Service, *boltstore.Store, string, servic
 func TestLifecycleAndDeniedBindings(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	svc, store, path, g := setup(t)
+	svc, _, path, g := setup(t)
 	secret, meta, err := svc.Issue(ctx, g, g)
 	if err != nil {
 		t.Fatal(err)
@@ -68,13 +69,17 @@ func TestLifecycleAndDeniedBindings(t *testing.T) {
 	if _, err := svc.Verify(ctx, secret.Reveal(), g.Access); err != nil {
 		t.Fatal(err)
 	}
-	listed, err := store.List(ctx, g.Owner, g.Resource)
+	listed, err := svc.List(ctx, g.Owner, g.Resource)
 	if err != nil || len(listed) != 1 {
 		t.Fatalf("list: %v %v", listed, err)
 	}
 	encoded, _ := json.Marshal(listed)
 	secretJSON, _ := json.Marshal(secret)
-	for _, out := range []string{string(encoded), string(secretJSON), fmt.Sprintf("%v %+v %#v", secret, secret, secret)} {
+	type wrapped struct{ secret servicecred.Secret }
+	var logs strings.Builder
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	logger.Info("test", "secret", secret)
+	for _, out := range []string{string(encoded), string(secretJSON), fmt.Sprintf("%v %+v %#v %d %s %q %x %X", secret, secret, secret, secret, secret, secret, secret, secret), fmt.Sprintf("%+v", wrapped{secret}), logs.String()} {
 		if strings.Contains(out, secret.Reveal()) || strings.Contains(out, "digest") {
 			t.Fatal("secret/verifier disclosure")
 		}
@@ -88,6 +93,13 @@ func TestLifecycleAndDeniedBindings(t *testing.T) {
 	}
 	if err := svc.Revoke(ctx, g.Owner, g.Resource, meta.ID); err != nil {
 		t.Fatal(err)
+	}
+	zeroJSON, err := json.Marshal(listed[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(zeroJSON), "revoked_at") {
+		t.Fatal("zero revocation timestamp should be omitted")
 	}
 	reopened, err := boltstore.Open(ctx, path)
 	if err != nil {
@@ -138,7 +150,6 @@ func TestExpiryAndCorruptStorageDeny(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A committed expired record is rejected without relying on wall-clock sleeps.
-	r.ID = strings.Repeat("b", 32)
 	r.ExpiresAt = time.Now().Add(-time.Hour)
 	r.CreatedAt = r.ExpiresAt.Add(-time.Hour)
 	// Use another store implementation to preserve the original token's ID/digest.
@@ -172,6 +183,9 @@ func (s recordStore) Lookup(context.Context, string) (servicecred.Record, error)
 	return s.record, s.err
 }
 func (s recordStore) Revoke(context.Context, string, string, string, time.Time) error { return s.err }
+func (s recordStore) List(context.Context, string, string) ([]servicecred.Metadata, error) {
+	return nil, s.err
+}
 func TestStorageFailureAndCancellation(t *testing.T) {
 	t.Parallel()
 	svc, _, _, g := setup(t)
@@ -221,6 +235,64 @@ func TestConcurrentRevocationVisibleToOtherStores(t *testing.T) {
 	wg.Wait()
 	if _, err := svc.Verify(ctx, secret.Reveal(), g.Access); !errors.Is(err, servicecred.ErrDenied) {
 		t.Fatalf("stale reader: %v", err)
+	}
+}
+
+func TestRevokeMakesProgressDuringContinuousVerify(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	svc, _, _, g := setup(t)
+	secret, meta, err := svc.Issue(ctx, g, g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	stop := make(chan struct{})
+	for i := 0; i < 24; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					_, _ = svc.Verify(ctx, secret.Reveal(), g.Access)
+				}
+			}
+		}()
+	}
+	close(start)
+	time.Sleep(30 * time.Millisecond)
+	revokeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if err := svc.Revoke(revokeCtx, g.Owner, g.Resource, meta.ID); err != nil {
+		close(stop)
+		wg.Wait()
+		t.Fatalf("revoke starved by readers: %v", err)
+	}
+	close(stop)
+	wg.Wait()
+	if _, err := svc.Verify(ctx, secret.Reveal(), g.Access); !errors.Is(err, servicecred.ErrDenied) {
+		t.Fatalf("revocation not visible: %v", err)
+	}
+}
+
+func TestStoreRevokeRejectsZeroTimeAndHidesBindingMismatch(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	svc, store, _, g := setup(t)
+	_, meta, err := svc.Issue(ctx, g, g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Revoke(ctx, meta.ID, g.Owner, g.Resource, time.Time{}); !errors.Is(err, servicecred.ErrInvalid) {
+		t.Fatalf("zero revoke time: %v", err)
+	}
+	if err := store.Revoke(ctx, meta.ID, "other", g.Resource, time.Now()); !errors.Is(err, servicecred.ErrNotFound) {
+		t.Fatalf("binding mismatch should be indistinguishable from missing: %v", err)
 	}
 }
 

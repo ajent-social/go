@@ -11,6 +11,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -39,7 +41,7 @@ type Metadata struct {
 	ID string `json:"id"`
 	Grant
 	CreatedAt time.Time `json:"created_at"`
-	RevokedAt time.Time `json:"revoked_at,omitempty"`
+	RevokedAt time.Time `json:"revoked_at,omitzero"`
 }
 
 // Record is storage-only. Never return it from management endpoints.
@@ -56,16 +58,25 @@ type Store interface {
 	Create(context.Context, Record) error
 	Lookup(context.Context, string) (Record, error)
 	Revoke(context.Context, string, string, string, time.Time) error
+	List(context.Context, string, string) ([]Metadata, error)
 }
 
 // Secret redacts ordinary formatting and serialization. Reveal is explicit;
 // callers must protect its result. Go cannot guarantee secret-memory erasure.
-type Secret struct{ value string }
+type Secret struct{ reveal func() string }
 
 func (Secret) String() string               { return "[REDACTED]" }
 func (Secret) GoString() string             { return "[REDACTED]" }
+func (Secret) Format(w fmt.State, _ rune)   { _, _ = io.WriteString(w, "[REDACTED]") }
 func (Secret) MarshalJSON() ([]byte, error) { return []byte(`"[REDACTED]"`), nil }
-func (s Secret) Reveal() string             { return s.value }
+func (Secret) MarshalText() ([]byte, error) { return []byte("[REDACTED]"), nil }
+func (Secret) LogValue() slog.Value         { return slog.StringValue("[REDACTED]") }
+func (s Secret) Reveal() string {
+	if s.reveal == nil {
+		return ""
+	}
+	return s.reveal()
+}
 
 type Service struct {
 	store Store
@@ -136,7 +147,23 @@ func (s *Service) Issue(ctx context.Context, ceiling, requested Grant) (Secret, 
 	if err := s.store.Create(ctx, record); err != nil {
 		return Secret{}, Metadata{}, fmt.Errorf("persist credential: %w", err)
 	}
-	return Secret{raw}, m, nil
+	return Secret{reveal: func() string { return raw }}, m, nil
+}
+
+// List returns sanitized metadata for one exact, caller-authorized binding.
+// Callers must authorize access before requesting the list.
+func (s *Service) List(ctx context.Context, owner, resource string) ([]Metadata, error) {
+	if !validName(owner) || !validName(resource) {
+		return nil, ErrInvalid
+	}
+	items, err := s.store.List(ctx, owner, resource)
+	if err != nil {
+		return nil, fmt.Errorf("list credentials: %w", err)
+	}
+	for i := range items {
+		items[i].Scopes = slices.Clone(items[i].Scopes)
+	}
+	return items, nil
 }
 
 // Verify checks the secret, current stored grant, expiry, revocation and every
@@ -181,6 +208,9 @@ func (s *Service) Revoke(ctx context.Context, owner, resource, id string) error 
 		return ErrInvalid
 	}
 	if err := s.store.Revoke(ctx, id, owner, resource, s.now().UTC()); err != nil {
+		if errors.Is(err, ErrNotFound) || errors.Is(err, ErrDenied) {
+			return ErrDenied
+		}
 		return fmt.Errorf("revoke credential: %w", err)
 	}
 	return nil

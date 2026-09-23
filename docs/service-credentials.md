@@ -20,17 +20,20 @@ and any changing authority policy. The library has no universal account model.
 
 `Revoke(ctx, owner, resource, id)` atomically matches the exact authorized
 binding before setting revocation. IDs are not secrets. The Store interface has
-three methods: atomic create-without-overwrite, authoritative lookup, and atomic
-binding-checked revoke. Store implementations are part of the trust boundary;
-they must preserve immutable grants and return errors, never fabricated records.
+four methods: atomic create-without-overwrite, authoritative lookup, atomic
+binding-checked revoke, and exact-binding metadata listing. `Service.List`
+returns sanitized metadata; the caller must authorize management access first.
+Store implementations are part of the trust boundary; they must preserve
+immutable grants and return errors, never fabricated records.
 
 ## Secret and failure behavior
 
 Tokens contain a random public lookup ID and 256 random secret bits, with a
 versioned prefix. Only the digest is stored. Prefixes do not grant authority.
-Secret's JSON and normal Go formatting redact its value; Reveal explicitly
-returns it for the issuance response. Do not log that result. The library cannot
-prevent callers from logging raw HTTP headers or promise memory erasure in Go.
+Secret's JSON, text, slog value and all Go formatting verbs redact its value;
+Reveal explicitly returns it for the issuance response. Do not log that result.
+The library cannot prevent callers from logging raw HTTP headers or promise
+memory erasure in Go.
 
 Malformed, wrong, expired, revoked or insufficient credentials yield ErrDenied.
 Store failures deny verification with a wrapped error; applications should map
@@ -53,16 +56,19 @@ store or opens the existing one. Parent directory and database permissions must
 be private; symlink database paths are rejected. The application controls the
 parent directory and lifecycle (hostile same-account filesystem changes are not
 an isolation boundary). Each operation opens a fresh transaction and releases
-its file lock. Read/write lock waits are bounded by one second or an earlier
-context deadline. Cancellation is checked before transactions; it does not abort
-an already committing transaction. No NoSync option is used.
+its file lock. Private sidecar locks give waiting writers priority so continuous
+verification traffic cannot indefinitely starve revocation. Lock waits follow
+the context deadline; bbolt lock acquisition is bounded by one second or an
+earlier context deadline. Cancellation is checked before transactions; it does
+not abort an already committing transaction. No NoSync option is used.
 
 Create never replaces an existing ID. Revoke checks owner/resource inside the
 write transaction. Missing or corrupt storage fails closed. List returns only
 metadata for one exact authorized owner/resource, including revoked records.
-File locks coordinate processes on one local filesystem; no multi-host or network
-filesystem consistency is promised. Applications needing PostgreSQL can supply
-an adapter with the same contract after demonstrating a real need.
+Sidecar and bbolt file locks coordinate processes on one local filesystem; no
+multi-host or network filesystem consistency is promised. Applications needing
+PostgreSQL can supply an adapter with the same contract after demonstrating a
+real need.
 
 ## Review gates
 

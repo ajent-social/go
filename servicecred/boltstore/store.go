@@ -30,6 +30,10 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if path == "" {
 		return nil, servicecred.ErrInvalid
 	}
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve credential database path: %w", err)
+	}
 	parent, err := os.Stat(filepath.Dir(path))
 	if err != nil {
 		return nil, fmt.Errorf("check credential directory: %w", err)
@@ -48,6 +52,11 @@ func (s *Store) transaction(ctx context.Context, write, initialize bool, fn func
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	release, err := acquireLock(ctx, s.path, write)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, release()) }()
 	fi, statErr := os.Lstat(s.path)
 	if statErr != nil && !(initialize && errors.Is(statErr, os.ErrNotExist)) {
 		return fmt.Errorf("check credential database: %w", statErr)
@@ -118,6 +127,9 @@ func (s *Store) Lookup(ctx context.Context, id string) (r servicecred.Record, er
 	return
 }
 func (s *Store) Revoke(ctx context.Context, id, owner, resource string, at time.Time) error {
+	if at.IsZero() {
+		return servicecred.ErrInvalid
+	}
 	return s.transaction(ctx, true, false, func(b *bolt.Bucket) error {
 		data := b.Get([]byte(id))
 		if data == nil {
@@ -128,7 +140,7 @@ func (s *Store) Revoke(ctx context.Context, id, owner, resource string, at time.
 			return fmt.Errorf("decode credential record: %w", err)
 		}
 		if r.ID != id || r.Owner != owner || r.Resource != resource {
-			return servicecred.ErrDenied
+			return servicecred.ErrNotFound
 		}
 		if !r.RevokedAt.IsZero() {
 			return nil
