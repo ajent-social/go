@@ -8,6 +8,12 @@ import (
 	"fmt"
 )
 
+func platformLockSupported() bool { return false }
+
+func ensureLockFiles(string) error {
+	return fmt.Errorf("cross-process credential store locks are unavailable on this platform: %w", errors.ErrUnsupported)
+}
+
 func acquireLock(context.Context, string, bool) (func() error, error) {
-	return nil, fmt.Errorf("writer-priority credential store locks are unavailable on this platform: %w", errors.ErrUnsupported)
+	return nil, ensureLockFiles("")
 }

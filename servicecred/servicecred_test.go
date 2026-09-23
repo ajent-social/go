@@ -467,6 +467,36 @@ func TestExistingStoreCanVerifyReadOnly(t *testing.T) {
 	}
 }
 
+func TestOpenAddsLocksToExistingDatabase(t *testing.T) {
+	ctx := context.Background()
+	svc, _, path, grant := setup(t)
+	secret, _, err := svc.Issue(ctx, grant, grant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, suffix := range []string{".intent", ".gate"} {
+		if err := os.Remove(path + suffix); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reopened, err := boltstore.Open(ctx, path)
+	if err != nil {
+		t.Fatalf("open older database without sidecars: %v", err)
+	}
+	for _, suffix := range []string{".intent", ".gate"} {
+		if _, err := os.Stat(path + suffix); err != nil {
+			t.Fatalf("sidecar %s was not restored: %v", suffix, err)
+		}
+	}
+	reopenedService, err := servicecred.New(reopened)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reopenedService.Verify(ctx, secret.Reveal(), grant.Access); err != nil {
+		t.Fatalf("existing credential rejected after sidecar migration: %v", err)
+	}
+}
+
 func TestStoreCreateDoesNotOverwriteAndPermissions(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

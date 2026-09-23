@@ -57,13 +57,17 @@ permissions must be private; symlink database paths are rejected. The
 application controls the parent directory and lifecycle (hostile same-account
 filesystem changes are not an isolation boundary). Creating a store requires a
 writable parent; opening an existing store for verification only requires read
-access, while writes require write access. Each operation opens a fresh
-transaction and releases its file lock. A writer that acquires the exclusive
-intent lock blocks later readers while existing readers drain. Admission polls
-with a one-second maximum or an earlier context deadline, so this is not a
-strict scheduler fairness guarantee. Cancellation is checked before
-transactions; it does not abort an already committing transaction. No NoSync
-option is used.
+access when its sidecar lock files already exist. A database created by an
+earlier revision is upgraded by creating missing sidecars, so that first open
+requires a writable parent; writes always require write access. Each operation
+opens a fresh transaction and releases its file lock. A writer that acquires
+the exclusive intent lock blocks later readers while existing readers drain.
+Admission polls with a one-second maximum or an earlier context deadline, so
+this is not a strict scheduler fairness guarantee. Cancellation is checked before
+transactions; it does not abort an already committing transaction. bbolt's own
+file-lock wait is separately capped at one second or an earlier context
+deadline, so an uncoordinated process holding the database lock can extend total
+wait toward two seconds. No NoSync option is used.
 
 Create never replaces an existing ID. Revoke checks owner/resource inside the
 write transaction. Missing or corrupt storage fails closed. List returns only
@@ -72,8 +76,9 @@ Sidecar and bbolt file locks coordinate processes on one local filesystem; no
 multi-host or network filesystem consistency is promised. Applications needing
 PostgreSQL can supply an adapter with the same contract after demonstrating a
 real need. This file-locking adapter is available on Darwin, DragonFly, FreeBSD,
-Linux, NetBSD, OpenBSD and Solaris. `Open` returns `errors.ErrUnsupported` on
-other platforms; applications can use another Store implementation there.
+illumos, Linux, NetBSD, OpenBSD and Solaris. `Open` returns
+`errors.ErrUnsupported` on other platforms; applications can use another Store
+implementation there.
 
 ## Review gates
 

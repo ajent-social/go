@@ -1,7 +1,7 @@
 // Package boltstore persists service credentials in bbolt on a local filesystem
 // on platforms with Unix flock support.
 // Derived from the bbolt credential-storage pattern in zerfoo/zerfoo,
-// serve/security/apikey_bbolt.go (Apache-2.0), introduced at
+// serve/security/apikey_bbolt.go (Apache-2.0), moved to this path in
 // https://github.com/zerfoo/zerfoo/blob/51ab5efe2a78534bcb5da19ee6df98dddd2e633c/serve/security/apikey_bbolt.go;
 // see docs/provenance-servicecred.md.
 // Changes: atomic create/revoke, exact bindings, explicit errors, scoped metadata
@@ -23,8 +23,9 @@ import (
 
 var bucket = []byte("amsl-service-credentials-v1")
 
-// Store opens the DB for each operation. bbolt's file lock serializes processes;
-// this adapter is for modest-volume local filesystems, not distributed storage.
+// Store opens the DB for each operation. Sidecar locks coordinate adapter
+// transactions before bbolt access; this adapter is for modest-volume local
+// filesystems, not distributed storage.
 type Store struct{ path string }
 
 // Open explicitly initializes storage if absent. It never resets existing data.
@@ -32,6 +33,9 @@ type Store struct{ path string }
 func Open(ctx context.Context, path string) (*Store, error) {
 	if path == "" {
 		return nil, servicecred.ErrInvalid
+	}
+	if !platformLockSupported() {
+		return nil, fmt.Errorf("cross-process credential store locks are unavailable on this platform: %w", errors.ErrUnsupported)
 	}
 	path, err := filepath.Abs(path)
 	if err != nil {
@@ -46,7 +50,9 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	}
 	s := &Store{path: path}
 	if _, statErr := os.Lstat(path); statErr == nil {
-		err = s.transaction(ctx, false, false, func(b *bolt.Bucket) error { return nil })
+		if err = ensureLockFiles(path); err == nil {
+			err = s.transaction(ctx, false, false, func(b *bolt.Bucket) error { return nil })
+		}
 	} else if errors.Is(statErr, os.ErrNotExist) {
 		err = s.transaction(ctx, true, true, func(b *bolt.Bucket) error { return nil })
 	} else {

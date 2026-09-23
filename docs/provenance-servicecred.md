@@ -7,8 +7,9 @@ Public source inspected: zerfoo/zerfoo `serve/security/apikey.go` and
 `serve/security/apikey_bbolt.go`, Apache-2.0. The latter was verified through the
 public repository Contents API as blob
 `6019d04cffe73f69751057a516b79f7b2cfb82fa` on 2026-09-22.
-The source was introduced by commit
-`51ab5efe2a78534bcb5da19ee6df98dddd2e633c`, verified as an ancestor of the
+The source originated at `security/apikey_bbolt.go` in commit
+`0d486ed64e85894902e1ff9a53edfc2bbffa8ac3`. It moved to the current path in
+commit `51ab5efe2a78534bcb5da19ee6df98dddd2e633c`, verified as an ancestor of
 public `origin/main` in the local upstream clone.
 Source: https://github.com/zerfoo/zerfoo/blob/51ab5efe2a78534bcb5da19ee6df98dddd2e633c/serve/security/apikey_bbolt.go
 License: https://github.com/zerfoo/zerfoo/blob/51ab5efe2a78534bcb5da19ee6df98dddd2e633c/LICENSE

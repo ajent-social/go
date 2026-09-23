@@ -13,6 +13,29 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func platformLockSupported() bool { return true }
+
+// ensureLockFiles upgrades a pre-sidecar database on its first open. Creating
+// both files before transactions begin makes concurrent initializers share the
+// same lock inodes.
+func ensureLockFiles(path string) error {
+	for _, suffix := range []string{".intent", ".gate"} {
+		name := path + suffix
+		_, statErr := os.Lstat(name)
+		if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+			return fmt.Errorf("inspect credential lock file: %w", statErr)
+		}
+		f, err := openLock(name, errors.Is(statErr, os.ErrNotExist))
+		if err != nil {
+			return err
+		}
+		if err := f.Close(); err != nil {
+			return fmt.Errorf("close credential lock file: %w", err)
+		}
+	}
+	return nil
+}
+
 // acquireLock prevents readers from entering after a writer obtains the
 // exclusive intent lock. Readers hold a shared intent lock only until they
 // hold the gate; a writer holds the intent exclusively while draining existing
