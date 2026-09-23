@@ -33,3 +33,19 @@ suite then passed. No failed run is counted as passing evidence.
 Maintainer review has not run. No second consumer migration, API release or
 security-sensitive merge has been performed. Next gate: maintainer review, immutable dependency verification and catalog
 evidence review.
+
+## 2026-09-23 — review corrections
+
+At source revision `9c6cfafc942b63df4e032d89c818c5765c29b1b1`, local
+`go test -race ./...` and `go vet ./...` passed. Cross-compilation checks passed
+for Darwin/arm64, Windows/amd64 and AIX/ppc64. Tests now cover alternate secret
+formatting and slog, lock cancellation, bounded revoke progress under continuous
+same-process and cross-process verification, read-only verification, relative
+paths, revoked metadata timestamps, and caller/store scope isolation.
+
+The restricted consumer run above used an earlier candidate revision
+(`b482cdf508200db1abc1a182421d8f5c8ddaac90`); that consumer has not been
+reverified against this reviewed revision. It remains restricted maintainer
+reporting, not public adoption evidence. Public REAL_CONSUMER verification is
+NOT_RUN. Lifecycle remains CANDIDATE; the headless AI review is not human
+maintainer review.
