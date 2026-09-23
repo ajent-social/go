@@ -1,6 +1,9 @@
-// Package boltstore persists service credentials in bbolt on a local filesystem.
+// Package boltstore persists service credentials in bbolt on a local filesystem
+// on platforms with Unix flock support.
 // Derived from the bbolt credential-storage pattern in zerfoo/zerfoo,
-// serve/security/apikey_bbolt.go (Apache-2.0); see docs/provenance-servicecred.md.
+// serve/security/apikey_bbolt.go (Apache-2.0), introduced at
+// https://github.com/zerfoo/zerfoo/blob/51ab5efe2a78534bcb5da19ee6df98dddd2e633c/serve/security/apikey_bbolt.go;
+// see docs/provenance-servicecred.md.
 // Changes: atomic create/revoke, exact bindings, explicit errors, scoped metadata
 // listing, per-operation locking and fail-closed missing/corrupt storage.
 package boltstore
@@ -42,7 +45,13 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, fmt.Errorf("credential directory must be private")
 	}
 	s := &Store{path: path}
-	err = s.transaction(ctx, true, true, func(b *bolt.Bucket) error { return nil })
+	if _, statErr := os.Lstat(path); statErr == nil {
+		err = s.transaction(ctx, false, false, func(b *bolt.Bucket) error { return nil })
+	} else if errors.Is(statErr, os.ErrNotExist) {
+		err = s.transaction(ctx, true, true, func(b *bolt.Bucket) error { return nil })
+	} else {
+		err = fmt.Errorf("check credential database: %w", statErr)
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -1,3 +1,5 @@
+//go:build darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris
+
 package servicecred_test
 
 import (
@@ -7,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -79,7 +82,7 @@ func TestLifecycleAndDeniedBindings(t *testing.T) {
 	var logs strings.Builder
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
 	logger.Info("test", "secret", secret)
-	for _, out := range []string{string(encoded), string(secretJSON), fmt.Sprintf("%v %+v %#v %d %s %q %x %X", secret, secret, secret, secret, secret, secret, secret, secret), fmt.Sprintf("%+v", wrapped{secret}), logs.String()} {
+	for _, out := range []string{string(encoded), string(secretJSON), fmt.Sprintf("%v %+v %#v %d %s %q %x %X %p", secret, secret, secret, secret, secret, secret, secret, secret, secret), fmt.Sprintf("%+v", wrapped{secret}), logs.String()} {
 		if strings.Contains(out, secret.Reveal()) || strings.Contains(out, "digest") {
 			t.Fatal("secret/verifier disclosure")
 		}
@@ -93,6 +96,14 @@ func TestLifecycleAndDeniedBindings(t *testing.T) {
 	}
 	if err := svc.Revoke(ctx, g.Owner, g.Resource, meta.ID); err != nil {
 		t.Fatal(err)
+	}
+	revoked, err := svc.List(ctx, g.Owner, g.Resource)
+	if err != nil || len(revoked) != 1 || revoked[0].RevokedAt.IsZero() {
+		t.Fatalf("revoked metadata: %#v %v", revoked, err)
+	}
+	revokedJSON, err := json.Marshal(revoked[0])
+	if err != nil || !strings.Contains(string(revokedJSON), "revoked_at") {
+		t.Fatalf("nonzero revocation timestamp missing from JSON: %s %v", revokedJSON, err)
 	}
 	zeroJSON, err := json.Marshal(listed[0])
 	if err != nil {
@@ -280,6 +291,77 @@ func TestRevokeMakesProgressDuringContinuousVerify(t *testing.T) {
 	}
 }
 
+func TestRevokeMakesProgressAgainstAnotherProcess(t *testing.T) {
+	ctx := context.Background()
+	svc, _, path, g := setup(t)
+	secret, meta, err := svc.Issue(ctx, g, g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ready := filepath.Join(t.TempDir(), "ready")
+	cmd := exec.Command(os.Args[0], "-test.run=^TestVerifySubprocessHelper$")
+	cmd.Env = append(os.Environ(), "SERVICECRED_HELPER=1", "SERVICECRED_DB="+path, "SERVICECRED_TOKEN="+secret.Reveal(), "SERVICECRED_READY="+ready)
+	var output strings.Builder
+	cmd.Stdout, cmd.Stderr = &output, &output
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	finished := false
+	defer func() {
+		if !finished {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		}
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(ready); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("helper did not become ready: %s", output.String())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	revokeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	err = svc.Revoke(revokeCtx, g.Owner, g.Resource, meta.ID)
+	cancel()
+	if err != nil {
+		t.Fatalf("cross-process revoke starved by readers: %v; helper: %s", err, output.String())
+	}
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("verify helper failed: %v; output: %s", err, output.String())
+	}
+	finished = true
+}
+
+func TestVerifySubprocessHelper(t *testing.T) {
+	if os.Getenv("SERVICECRED_HELPER") != "1" {
+		return
+	}
+	store, err := boltstore.Open(context.Background(), os.Getenv("SERVICECRED_DB"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, err := servicecred.New(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(os.Getenv("SERVICECRED_READY"), []byte("ready"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	required := servicecred.Access{Owner: "owner", Resource: "browser", Scopes: []string{"read", "act"}}
+	for {
+		_, err := svc.Verify(context.Background(), os.Getenv("SERVICECRED_TOKEN"), required)
+		if errors.Is(err, servicecred.ErrDenied) {
+			return
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestStoreRevokeRejectsZeroTimeAndHidesBindingMismatch(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -293,6 +375,95 @@ func TestStoreRevokeRejectsZeroTimeAndHidesBindingMismatch(t *testing.T) {
 	}
 	if err := store.Revoke(ctx, meta.ID, "other", g.Resource, time.Now()); !errors.Is(err, servicecred.ErrNotFound) {
 		t.Fatalf("binding mismatch should be indistinguishable from missing: %v", err)
+	}
+}
+
+func TestIssueReturnsIndependentMetadataScopes(t *testing.T) {
+	store := &memoryStore{}
+	svc, err := servicecred.New(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	grant := servicecred.Grant{Access: servicecred.Access{Owner: "owner", Resource: "resource", Scopes: []string{"read"}}, ExpiresAt: now.Add(time.Hour)}
+	secret, metadata, err := svc.Issue(context.Background(), grant, grant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata.Scopes[0] = "admin"
+	if _, err := svc.Verify(context.Background(), secret.Reveal(), grant.Access); err != nil {
+		t.Fatalf("returned metadata mutated stored grant: %v", err)
+	}
+}
+
+type memoryStore struct{ record servicecred.Record }
+
+func (s *memoryStore) Create(_ context.Context, r servicecred.Record) error {
+	s.record = r
+	return nil
+}
+func (s *memoryStore) Lookup(context.Context, string) (servicecred.Record, error) {
+	return s.record, nil
+}
+func (s *memoryStore) Revoke(context.Context, string, string, string, time.Time) error {
+	return nil
+}
+func (s *memoryStore) List(context.Context, string, string) ([]servicecred.Metadata, error) {
+	return nil, nil
+}
+
+func TestOpenResolvesRelativeDatabasePath(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(old); err != nil {
+			t.Error(err)
+		}
+	})
+	if _, err := boltstore.Open(context.Background(), "credentials.db"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "credentials.db")); err != nil {
+		t.Fatalf("database was not created at resolved path: %v", err)
+	}
+}
+
+func TestExistingStoreCanVerifyReadOnly(t *testing.T) {
+	ctx := context.Background()
+	svc, _, path, grant := setup(t)
+	secret, _, err := svc.Issue(ctx, grant, grant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0400); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(path), 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(filepath.Dir(path), 0700)
+		_ = os.Chmod(path, 0600)
+	})
+	readOnly, err := boltstore.Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readOnlyService, err := servicecred.New(readOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readOnlyService.Verify(ctx, secret.Reveal(), grant.Access); err != nil {
+		t.Fatalf("read-only verification failed: %v", err)
 	}
 }
 

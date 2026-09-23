@@ -52,15 +52,18 @@ positive verification results across requests.
 ## Durable adapter
 
 `servicecred/boltstore.Open(ctx,path)` explicitly initializes a new local bbolt
-store or opens the existing one. Parent directory and database permissions must
-be private; symlink database paths are rejected. The application controls the
-parent directory and lifecycle (hostile same-account filesystem changes are not
-an isolation boundary). Each operation opens a fresh transaction and releases
-its file lock. Private sidecar locks give waiting writers priority so continuous
-verification traffic cannot indefinitely starve revocation. Lock waits follow
-the context deadline; bbolt lock acquisition is bounded by one second or an
-earlier context deadline. Cancellation is checked before transactions; it does
-not abort an already committing transaction. No NoSync option is used.
+store or opens the existing one. Parent directory, database and lock-file
+permissions must be private; symlink database paths are rejected. The
+application controls the parent directory and lifecycle (hostile same-account
+filesystem changes are not an isolation boundary). Creating a store requires a
+writable parent; opening an existing store for verification only requires read
+access, while writes require write access. Each operation opens a fresh
+transaction and releases its file lock. A writer that acquires the exclusive
+intent lock blocks later readers while existing readers drain. Admission polls
+with a one-second maximum or an earlier context deadline, so this is not a
+strict scheduler fairness guarantee. Cancellation is checked before
+transactions; it does not abort an already committing transaction. No NoSync
+option is used.
 
 Create never replaces an existing ID. Revoke checks owner/resource inside the
 write transaction. Missing or corrupt storage fails closed. List returns only
@@ -68,7 +71,9 @@ metadata for one exact authorized owner/resource, including revoked records.
 Sidecar and bbolt file locks coordinate processes on one local filesystem; no
 multi-host or network filesystem consistency is promised. Applications needing
 PostgreSQL can supply an adapter with the same contract after demonstrating a
-real need.
+real need. This file-locking adapter is available on Darwin, DragonFly, FreeBSD,
+Linux, NetBSD, OpenBSD and Solaris. `Open` returns `errors.ErrUnsupported` on
+other platforms; applications can use another Store implementation there.
 
 ## Review gates
 

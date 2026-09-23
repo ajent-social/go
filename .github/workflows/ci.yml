@@ -18,3 +18,6 @@ jobs:
           cache: false
       - run: go vet ./...
       - run: go test -race ./...
+      - run: GOOS=darwin GOARCH=arm64 go test ./servicecred/boltstore
+      - run: GOOS=windows GOARCH=amd64 go test ./servicecred/boltstore
+      - run: GOOS=aix GOARCH=ppc64 go test ./servicecred/boltstore

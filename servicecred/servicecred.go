@@ -147,7 +147,9 @@ func (s *Service) Issue(ctx context.Context, ceiling, requested Grant) (Secret, 
 	if err := s.store.Create(ctx, record); err != nil {
 		return Secret{}, Metadata{}, fmt.Errorf("persist credential: %w", err)
 	}
-	return Secret{reveal: func() string { return raw }}, m, nil
+	out := m
+	out.Scopes = slices.Clone(m.Scopes)
+	return Secret{reveal: func() string { return raw }}, out, nil
 }
 
 // List returns sanitized metadata for one exact, caller-authorized binding.

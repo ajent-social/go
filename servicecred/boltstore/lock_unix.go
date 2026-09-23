@@ -1,4 +1,4 @@
-//go:build aix || darwin || dragonfly || freebsd || illumos || linux || netbsd || openbsd || solaris
+//go:build darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris
 
 package boltstore
 
@@ -13,15 +13,19 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// acquireLock gives pending writers priority over later readers. Readers hold
-// a shared intent lock only until they hold the gate; a writer then holds the
-// intent exclusively while draining existing readers and updating bbolt.
+// acquireLock prevents readers from entering after a writer obtains the
+// exclusive intent lock. Readers hold a shared intent lock only until they
+// hold the gate; a writer holds the intent exclusively while draining existing
+// readers and updating bbolt. Admission uses bounded polling, so this is not a
+// strict scheduler fairness guarantee.
 func acquireLock(ctx context.Context, path string, write bool) (func() error, error) {
-	intent, err := openLock(path + ".intent")
+	lockCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	intent, err := openLock(path+".intent", write)
 	if err != nil {
 		return nil, err
 	}
-	gate, err := openLock(path + ".gate")
+	gate, err := openLock(path+".gate", write)
 	if err != nil {
 		return nil, errors.Join(err, intent.Close())
 	}
@@ -30,10 +34,10 @@ func acquireLock(ctx context.Context, path string, write bool) (func() error, er
 	if write {
 		intentOp, gateOp = unix.LOCK_EX, unix.LOCK_EX
 	}
-	if err := lockFile(ctx, intent, intentOp); err != nil {
+	if err := lockFile(lockCtx, intent, intentOp); err != nil {
 		return nil, errors.Join(err, closeFiles())
 	}
-	if err := lockFile(ctx, gate, gateOp); err != nil {
+	if err := lockFile(lockCtx, gate, gateOp); err != nil {
 		return nil, errors.Join(err, unlock(intent), closeFiles())
 	}
 	if !write {
@@ -49,7 +53,7 @@ func acquireLock(ctx context.Context, path string, write bool) (func() error, er
 	}, nil
 }
 
-func openLock(path string) (*os.File, error) {
+func openLock(path string, write bool) (*os.File, error) {
 	if fi, err := os.Lstat(path); err == nil {
 		if !fi.Mode().IsRegular() || fi.Mode().Perm()&0077 != 0 {
 			return nil, fmt.Errorf("lock file must be a private regular file: %s", filepath.Base(path))
@@ -57,7 +61,11 @@ func openLock(path string) (*os.File, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("inspect lock file: %w", err)
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+	flags := os.O_RDONLY
+	if write {
+		flags = os.O_CREATE | os.O_RDWR
+	}
+	f, err := os.OpenFile(path, flags, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("open lock file: %w", err)
 	}

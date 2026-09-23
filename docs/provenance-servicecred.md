@@ -7,8 +7,11 @@ Public source inspected: zerfoo/zerfoo `serve/security/apikey.go` and
 `serve/security/apikey_bbolt.go`, Apache-2.0. The latter was verified through the
 public repository Contents API as blob
 `6019d04cffe73f69751057a516b79f7b2cfb82fa` on 2026-09-22.
-Source: https://github.com/zerfoo/zerfoo/blob/main/serve/security/apikey_bbolt.go
-License: https://github.com/zerfoo/zerfoo/blob/main/LICENSE
+The source was introduced by commit
+`51ab5efe2a78534bcb5da19ee6df98dddd2e633c`, verified as an ancestor of the
+public `origin/main` in the local upstream clone.
+Source: https://github.com/zerfoo/zerfoo/blob/51ab5efe2a78534bcb5da19ee6df98dddd2e633c/serve/security/apikey_bbolt.go
+License: https://github.com/zerfoo/zerfoo/blob/51ab5efe2a78534bcb5da19ee6df98dddd2e633c/LICENSE
 
 The boltstore package adapts its JSON-record/bbolt-transaction storage pattern.
 It retains attribution and uses the source's Apache-2.0 license. No private code
@@ -27,8 +30,9 @@ verifiers and comparison. SHA-256 applies to uniformly random 256-bit secrets,
 not passwords. Password hashing and interactive session/OAuth flows should use
 established implementations and remain outside this capability.
 
-bbolt v1.4.3 (MIT) is the only direct external dependency. It supplies transactional
-local storage and cross-process file locking. It is not a multi-host database;
-applications requiring that topology should supply a store with the same
-create/read/revoke consistency contract. No custom cryptography, payment client,
-MCP protocol or generic authorization engine is introduced.
+bbolt v1.4.3 (MIT) supplies transactional local storage; golang.org/x/sys v0.29.0
+(BSD-3-Clause) supplies Unix flock calls for admission and writer coordination.
+The adapter is not a multi-host database; applications requiring that topology
+should supply a store with the same create/read/revoke consistency contract. No
+custom cryptography, payment client, MCP protocol or generic authorization
+engine is introduced.

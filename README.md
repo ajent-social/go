@@ -15,6 +15,8 @@ Read the [contract](docs/service-credentials.md),
 [provenance and alternatives](docs/provenance-servicecred.md), and
 [implementation worklog](docs/servicecred-worklog.md) before adopting it.
 Applications retain login, authorization, account-status and paid-access policy.
+The bbolt adapter uses local file locks and is supported on Unix platforms listed
+in the contract; on other platforms, provide another `Store` implementation.
 
 ```sh
 go vet ./...
