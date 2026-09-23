@@ -10,7 +10,7 @@ expanding. No billing provider client, universal user model or UI framework.
 - [x] Adapt durable transactional storage with explicit failure semantics.
 - [x] Run initial contract/security tests and race/vet.
 - [ ] Reverify an independent consumer against the reviewed revision using evidence readers can reproduce.
-- [ ] Publish implementation and catalog changes as reviewable pull requests (implementation PR #1 is open).
+- [x] Publish implementation and catalog changes as reviewable pull requests (#1 and #2).
 - [ ] Human maintainer reviews the security API and evidence.
 - [ ] Decide lifecycle promotion after review; never infer it from tests alone.
 

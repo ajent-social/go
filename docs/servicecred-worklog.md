@@ -30,9 +30,10 @@ merged consumer release or production deployment. No consumer identity, source
 hash or private path is published. The first transport test run hung during test
 cleanup; closing client streams before the HTTP server resolved it, and the full
 suite then passed. No failed run is counted as passing evidence.
-Maintainer review has not run. No second consumer migration, API release or
-security-sensitive merge has been performed. Next gate: maintainer review, immutable dependency verification and catalog
-evidence review.
+Maintainer review has not run. As of 2026-09-22, no second consumer migration,
+API release or security-sensitive merge had been performed. Next gate:
+maintainer review, immutable dependency verification and catalog evidence
+review.
 
 ## 2026-09-23 — review corrections
 
@@ -43,8 +44,8 @@ alternate secret formatting and slog, lock cancellation, bounded revoke
 progress under continuous same-process and cross-process verification,
 read-only verification, migration of databases without sidecar lock files,
 relative paths, revoked metadata timestamps, and caller/store scope isolation.
-The Windows-only test asserting `errors.ErrUnsupported` is covered by a native
-Windows CI job.
+Unsupported-platform builds include an `errors.ErrUnsupported` assertion; a
+native Windows CI job runs that test.
 
 The restricted consumer run above used an earlier candidate revision
 (`b482cdf508200db1abc1a182421d8f5c8ddaac90`); that consumer has not been
