@@ -2,15 +2,27 @@
 
 Reusable application behavior, earned through real consumers.
 
-This repository is the Go implementation home for [AMSL](https://github.com/ajent-social/capabilities). **Status: repository foundation. No runtime capability is implemented or promoted yet.** The module is `github.com/ajent-social/go`; there is no installable service-credential API to depend on today.
+This repository is the Go implementation home for
+[AMSL](https://github.com/ajent-social/capabilities). The module is
+`github.com/ajent-social/go`.
 
-The first proposed slice is [scoped service credentials](docs/service-credentials.md). It must clear contract review, original-code/provenance review, adversarial tests and real application adoption before experimental promotion.
+The first CANDIDATE implementation is `servicecred`, with a durable local bbolt
+adapter in `servicecred/boltstore`. It provides issue-once machine secrets,
+explicit owner/resource/scopes, mandatory expiry and durable revocation. It is
+proposed for maintainer review, not a stable or released security API.
 
-Use established libraries for crypto, sessions, payment clients and MCP. Keep application authorization and paid-access policy with the application.
+Read the [contract](docs/service-credentials.md),
+[provenance and alternatives](docs/provenance-servicecred.md), and
+[implementation worklog](docs/servicecred-worklog.md) before adopting it.
+Applications retain login, authorization, account-status and paid-access policy.
+The bbolt adapter uses local file locks and is supported on Unix platforms listed
+in the contract; on other platforms, provide another `Store` implementation.
 
 ```sh
-go test .
-go vet .
+go vet ./...
+go test -race ./...
 ```
 
-These currently verify only that the documentation package compiles. They do not verify runtime behavior. See [bootstrap status](docs/bootstrap.md), [contributing](CONTRIBUTING.md) and the [canonical RFC](https://github.com/ajent-social/capabilities/blob/main/docs/rfc/0001-amsl-bootstrap.md).
+Use established libraries for crypto, sessions, payment clients and MCP. See
+[contributing](CONTRIBUTING.md) and the
+[canonical RFC](https://github.com/ajent-social/capabilities/blob/main/docs/rfc/0001-amsl-bootstrap.md).

@@ -1,11 +1,11 @@
-name: go-foundation
+name: go-validation
 on:
   push:
   pull_request:
 permissions:
   contents: read
 jobs:
-  compile-doc-package:
+  credential-contracts:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -16,5 +16,21 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - run: go vet .
-      - run: go test .
+      - run: go vet ./...
+      - run: go test -race ./...
+      - run: GOOS=darwin GOARCH=arm64 go build ./servicecred/boltstore
+      - run: GOOS=windows GOARCH=amd64 go build ./servicecred/boltstore
+      - run: GOOS=aix GOARCH=ppc64 go build ./servicecred/boltstore
+      - run: GOOS=illumos GOARCH=amd64 go build ./servicecred/boltstore
+  unsupported-platform:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: go test ./servicecred/boltstore
