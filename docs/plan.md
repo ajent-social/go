@@ -11,9 +11,12 @@ expanding. No billing provider client, universal user model or UI framework.
 - [x] Run initial contract/security tests and race/vet.
 - [ ] Reverify an independent consumer against the reviewed revision using evidence readers can reproduce.
 - [x] Publish implementation and catalog changes as reviewable pull requests (#1 and #2).
+- [x] Add PostgreSQL-compatible SQL Store adapter (`servicecred/sqlstore`) with contract tests.
+- [x] Public zerfoo consumer adopt (open PR https://github.com/zerfoo/zerfoo/pull/1014; not yet merged).
+- [x] Restricted skills-discovery concurrent adopt (maintainer-reported; local branch helper + integration test; legacy tokens unchanged).
 - [ ] Human maintainer reviews the security API and evidence.
 - [ ] Decide lifecycle promotion after review; never infer it from tests alone.
 
-Next independent consumer gate: credentials must not adopt another credential's
-transport session, lease or cancellation authority. Verify restart-safe
-revocation and origin checks using public, independently reproducible evidence.
+Next gates: merge AMSL sqlstore PR and zerfoo consumer PR after maintainer
+review; reverify an immutable module pin; keep status CANDIDATE until human
+review.

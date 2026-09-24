@@ -49,7 +49,9 @@ and long-lived streams are not retroactively canceled. Applications needing that
 behavior must implement explicit task cancellation/revalidation. Do not cache
 positive verification results across requests.
 
-## Durable adapter
+## Durable adapters
+
+### Local bbolt (`servicecred/boltstore`)
 
 `servicecred/boltstore.Open(ctx,path)` explicitly initializes a new local bbolt
 store or opens the existing one. Parent directory, database and lock-file
@@ -73,12 +75,23 @@ Create never replaces an existing ID. Revoke checks owner/resource inside the
 write transaction. Missing or corrupt storage fails closed. List returns only
 metadata for one exact authorized owner/resource, including revoked records.
 Sidecar and bbolt file locks coordinate processes on one local filesystem; no
-multi-host or network filesystem consistency is promised. Applications needing
-PostgreSQL can supply an adapter with the same contract after demonstrating a
-real need. This file-locking adapter is available on Darwin, DragonFly, FreeBSD,
-illumos, Linux, NetBSD, OpenBSD and Solaris. `Open` returns
-`errors.ErrUnsupported` on other platforms; applications can use another Store
-implementation there.
+multi-host or network filesystem consistency is promised. This file-locking
+adapter is available on Darwin, DragonFly, FreeBSD, illumos, Linux, NetBSD,
+OpenBSD and Solaris. `Open` returns `errors.ErrUnsupported` on other platforms;
+applications can use another Store implementation there.
+
+### SQL (`servicecred/sqlstore`)
+
+`servicecred/sqlstore.Open(ctx, db)` takes an application-owned `*sql.DB` opened
+against a PostgreSQL-compatible server (PostgreSQL, [SereneDB](https://github.com/serenedb/serenedb),
+and peers that share the dialect), pings it, and applies an idempotent schema
+creating `amsl_service_credentials`. Scopes are stored as JSON text. Create uses
+insert without overwrite (unique primary key → `ErrExists`). Revoke locks the
+row (`FOR UPDATE`), checks the exact owner/resource binding, and is idempotent.
+List returns sanitized metadata for one exact binding, including revoked
+records. Connection pooling, TLS, credentials, driver choice and migration
+ownership remain with the application. Swapping backends is a DSN/driver change;
+this package does not embed a vendor client.
 
 ## Review gates
 
