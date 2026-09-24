@@ -36,10 +36,11 @@ policy stay with the application. Checkout companions include
 `billing/checkout/stripeadapt`, `billing/checkout/sqlstore`, and
 `billing/portal` (Stripe Customer Portal for self-serve billing management).
 
-Human auth CANDIDATEs for the hosted path: `accounts` (thin subject registry),
-`passkey` (go-webauthn ceremonies; patterns informed by ajent-social human
-accounts, no private source copied), and `magiclink` (email challenge tokens).
-Browser session cookies remain REFERENCE_EXISTING (e.g. SCS).
+Human auth CANDIDATEs for the hosted path: `accounts`, `passkey` (go-webauthn
+ceremonies; patterns informed by ajent-social human accounts, no private source
+copied), and `magiclink` (email challenge tokens). Each has a multi-host
+`sqlstore` adapter (PostgreSQL-compatible, including SereneDB). Browser session
+cookies remain REFERENCE_EXISTING (e.g. SCS).
 
 Composition recipe (CLI → hosted multi-tenant paid MCP with user/billing
 management and passkey/magic auth):
