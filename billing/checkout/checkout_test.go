@@ -3,6 +3,7 @@ package checkout_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -150,5 +151,73 @@ func TestProviderFailureLeavesUnknown(t *testing.T) {
 	rec, err := store.LookupAttempt(ctx, "acct-x", "att-x")
 	if err != nil || rec.Status != checkout.StatusUnknown {
 		t.Fatalf("want unknown attempt, got %#v %v", rec, err)
+	}
+}
+
+func TestStartCheckoutLongAttemptID(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := checkout.New(memory.New(), newFake())
+	long := checkout.AttemptID(strings.Repeat("a", 128))
+	in := checkout.CheckoutInput{
+		Account: "acct-long", Attempt: long, PriceID: "price_1",
+		SuccessURL: "https://app.test/ok", CancelURL: "https://app.test/cancel",
+	}
+	res, err := svc.StartCheckout(ctx, in)
+	if err != nil || res.URL == "" {
+		t.Fatalf("long attempt: %#v %v", res, err)
+	}
+}
+
+func TestRecoverClaimsLeaseBeforeCommit(t *testing.T) {
+	ctx := context.Background()
+	store := memory.New()
+	prov := newFake()
+	svc, _ := checkout.New(store, prov)
+	in := checkout.CheckoutInput{
+		Account: "acct-race", Attempt: "chk-race", PriceID: "price_1",
+		SuccessURL: "https://app.test/ok", CancelURL: "https://app.test/cancel",
+	}
+	res, err := svc.StartCheckout(ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := store.LookupAttempt(ctx, in.Account, in.Attempt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate another worker holding a newer lease after success was rolled
+	// back to unknown with the original epoch still recorded incorrectly.
+	if err := store.CommitAttempt(ctx, checkout.AttemptCommit{
+		Account: in.Account, Attempt: in.Attempt, LeaseEpoch: rec.LeaseEpoch,
+		Status: checkout.StatusUnknown, ProviderRef: res.ProviderRef, CustomerRef: res.CustomerRef,
+		CheckoutURL: res.URL,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Bump lease as an in-flight StartCheckout/Recover would.
+	claimed, err := store.ClaimAttempt(ctx, checkout.AttemptClaim{
+		Account: in.Account, Attempt: in.Attempt, Kind: checkout.KindCheckout,
+		RequestHash: rec.RequestHash, IdempotencyKey: rec.IdempotencyKey,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed.LeaseEpoch <= rec.LeaseEpoch {
+		t.Fatalf("lease did not bump: %#v", claimed)
+	}
+	// Stale commit with the pre-claim epoch must fail.
+	if err := store.CommitAttempt(ctx, checkout.AttemptCommit{
+		Account: in.Account, Attempt: in.Attempt, LeaseEpoch: rec.LeaseEpoch,
+		Status: checkout.StatusFailed, ProviderRef: res.ProviderRef,
+	}); !errors.Is(err, checkout.ErrStaleLease) {
+		t.Fatalf("stale commit: %v", err)
+	}
+	got, err := svc.RecoverAttempt(ctx, in.Account, in.Attempt)
+	if err != nil || got.Status != checkout.StatusSucceeded {
+		t.Fatalf("recover: %#v %v", got, err)
+	}
+	final, err := store.LookupAttempt(ctx, in.Account, in.Attempt)
+	if err != nil || final.Status != checkout.StatusSucceeded {
+		t.Fatalf("final: %#v %v", final, err)
 	}
 }

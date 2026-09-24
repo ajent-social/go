@@ -197,6 +197,28 @@ func idempotencyKey(kind Kind, account AccountID, attempt AttemptID) string {
 	return string(kind) + ":" + string(account) + ":" + string(attempt)
 }
 
+// ensureAttemptID derives a short, stable EnsureCustomer attempt from a
+// checkout attempt so StartCheckout cannot exceed AttemptID length limits.
+func ensureAttemptID(checkoutAttempt AttemptID) AttemptID {
+	sum := sha256.Sum256([]byte("ensure|" + string(checkoutAttempt)))
+	return AttemptID("e" + hex.EncodeToString(sum[:16]))
+}
+
+func resultFrom(rec AttemptRecord) CheckoutResult {
+	return CheckoutResult{Status: rec.Status, CustomerRef: rec.CustomerRef, ProviderRef: rec.ProviderRef, URL: rec.CheckoutURL}
+}
+
+func terminalResult(rec AttemptRecord) (CheckoutResult, error, bool) {
+	switch rec.Status {
+	case StatusSucceeded, StatusFailed:
+		return resultFrom(rec), nil, true
+	case StatusNeedsReview, StatusConflict:
+		return resultFrom(rec), ErrNeedsReview, true
+	default:
+		return CheckoutResult{}, nil, false
+	}
+}
+
 // EnsureCustomer binds a local account to a provider customer using attempt
 // identity for durable recovery after lost responses.
 func (s *Service) EnsureCustomer(ctx context.Context, account AccountID, attempt AttemptID) (CustomerRef, error) {
@@ -264,7 +286,7 @@ func (s *Service) StartCheckout(ctx context.Context, in CheckoutInput) (Checkout
 		strings.TrimSpace(in.SuccessURL) == "" || strings.TrimSpace(in.CancelURL) == "" {
 		return CheckoutResult{}, ErrInvalid
 	}
-	customer, err := s.EnsureCustomer(ctx, in.Account, AttemptID("ensure-"+string(in.Attempt)))
+	customer, err := s.EnsureCustomer(ctx, in.Account, ensureAttemptID(in.Attempt))
 	if err != nil {
 		return CheckoutResult{}, err
 	}
@@ -305,7 +327,8 @@ func (s *Service) StartCheckout(ctx context.Context, in CheckoutInput) (Checkout
 }
 
 // RecoverAttempt resolves an in-flight or unknown attempt without starting a
-// new unguarded provider create.
+// new unguarded provider create. It claims a fresh lease before committing so
+// it cannot overwrite another worker's terminal result on a stale epoch.
 func (s *Service) RecoverAttempt(ctx context.Context, account AccountID, attempt AttemptID) (CheckoutResult, error) {
 	if err := ctx.Err(); err != nil {
 		return CheckoutResult{}, err
@@ -317,15 +340,28 @@ func (s *Service) RecoverAttempt(ctx context.Context, account AccountID, attempt
 	if err != nil {
 		return CheckoutResult{}, err
 	}
-	if rec.Status == StatusSucceeded {
-		return CheckoutResult{Status: rec.Status, CustomerRef: rec.CustomerRef, ProviderRef: rec.ProviderRef, URL: rec.CheckoutURL}, nil
-	}
-	if rec.Status == StatusNeedsReview || rec.Status == StatusConflict {
-		return CheckoutResult{Status: rec.Status, CustomerRef: rec.CustomerRef, ProviderRef: rec.ProviderRef, URL: rec.CheckoutURL}, ErrNeedsReview
+	if out, err, done := terminalResult(rec); done {
+		return out, err
 	}
 	if rec.ProviderRef == "" {
 		return CheckoutResult{Status: StatusNeedsReview}, ErrNeedsReview
 	}
+
+	now := s.now().UTC()
+	rec, err = s.store.ClaimAttempt(ctx, AttemptClaim{
+		Account: account, Attempt: attempt, Kind: rec.Kind,
+		RequestHash: rec.RequestHash, IdempotencyKey: rec.IdempotencyKey, Now: now,
+	})
+	if err != nil {
+		return CheckoutResult{}, err
+	}
+	if out, err, done := terminalResult(rec); done {
+		return out, err
+	}
+	if rec.ProviderRef == "" {
+		return CheckoutResult{Status: StatusNeedsReview}, ErrNeedsReview
+	}
+
 	session, err := s.provider.GetCheckoutSession(ctx, rec.ProviderRef)
 	if err != nil {
 		return CheckoutResult{Status: StatusUnknown, ProviderRef: rec.ProviderRef}, fmt.Errorf("recover session: %w", err)
@@ -344,7 +380,10 @@ func (s *Service) RecoverAttempt(ctx context.Context, account AccountID, attempt
 			if lerr != nil {
 				return CheckoutResult{}, lerr
 			}
-			return CheckoutResult{Status: latest.Status, CustomerRef: latest.CustomerRef, ProviderRef: latest.ProviderRef, URL: latest.CheckoutURL}, nil
+			if out, err, done := terminalResult(latest); done {
+				return out, err
+			}
+			return resultFrom(latest), ErrBusy
 		}
 		return CheckoutResult{}, err
 	}
