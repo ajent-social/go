@@ -22,9 +22,9 @@ The tool/engine stays product code. AMSL owns repeated coordination seams.
 | Step | AMSL / external | Notes |
 | --- | --- | --- |
 | 1 | Host + private Postgres | Product infra |
-| 2 | `accounts` | Create / EnsureByEmail / Disable / RequireActive |
-| 3a | `passkey` + go-webauthn | Discoverable UV passkeys; RP from configured origin |
-| 3b | `magiclink` + Mailer | Email challenge; you send mail and mint session after Consume |
+| 2 | `accounts` + `sqlstore` | Create / EnsureByEmail / Disable / RequireActive |
+| 3a | `passkey` + `sqlstore` + go-webauthn | Discoverable UV passkeys; RP from configured origin |
+| 3b | `magiclink` + `sqlstore` + Mailer | Email challenge; you send mail and mint session after Consume |
 | 3c | Sessions | REFERENCE_EXISTING (`scs` or hashed cookie like product sessions) |
 | 4 | `servicecred` + `sqlstore` | `Owner` = `accounts.Account.ID` |
 | 5 | `mcpoauth` + `sqlstore` | Consent after browser auth; Verify on MCP requests |

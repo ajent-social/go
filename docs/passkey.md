@@ -9,6 +9,9 @@ Coordinate discoverable, user-verified WebAuthn ceremonies around
 from configuration only (never request `Host`). Ceremonies are consumed before
 verification so replays fail closed.
 
+`passkey/memory` for tests. `passkey/sqlstore` for multi-host PostgreSQL-compatible
+servers (credentials stored as JSON TEXT).
+
 ## Non-goals
 
 Login UI, CSRF cookies, session minting, user directory, attestation policy
