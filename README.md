@@ -11,6 +11,15 @@ adapter in `servicecred/boltstore`. It provides issue-once machine secrets,
 explicit owner/resource/scopes, mandatory expiry and durable revocation. It is
 proposed for maintainer review, not a stable or released security API.
 
+The second CANDIDATE is `mcpoauth`, a bounded OAuth 2.1 authorization server
+for a single MCP protected resource with public PKCE clients, plus a bbolt
+reference store in `mcpoauth/boltstore`. It is an owner-authorized adaptation
+of restricted product code; see the [contract](docs/mcp-oauth.md),
+[provenance](docs/provenance-mcpoauth.md) and
+[worklog](docs/mcpoauth-worklog.md). Refresh token rotation with
+reuse-triggered family revocation is a new extension on top of the extracted
+authorization-code flow.
+
 Read the [contract](docs/service-credentials.md),
 [provenance and alternatives](docs/provenance-servicecred.md), and
 [implementation worklog](docs/servicecred-worklog.md) before adopting it.
