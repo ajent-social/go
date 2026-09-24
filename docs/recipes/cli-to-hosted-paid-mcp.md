@@ -8,12 +8,13 @@ real consumer evidence.
 
 Take a useful local Go CLI/tool and offer it as a hosted service with:
 
-1. Human accounts + auth (passkey and/or email magic link) + browser sessions
+1. Human accounts + auth (passkey and/or email magic link and/or OIDC social) + browser sessions
 2. User management (thin account registry; disable fail-closed)
 3. Billing management (checkout + subscription projection + Stripe portal)
 4. Multi-tenant machine credentials (`servicecred` + `sqlstore`)
 5. MCP access via OAuth (`mcpoauth` + `sqlstore`)
 6. Product entitlement: what a paid tenant may invoke
+7. Dedicated instance lifecycle (`tenant` + Pulumi `privatedatabase` / `containerdeploy` / `tenantdnstls`)
 
 The tool/engine stays product code. AMSL owns repeated coordination seams.
 
@@ -21,11 +22,12 @@ The tool/engine stays product code. AMSL owns repeated coordination seams.
 
 | Step | AMSL / external | Notes |
 | --- | --- | --- |
-| 1 | Host + private Postgres | Product infra |
+| 1 | Host + private Postgres | Pulumi `privatedatabase` or product infra |
 | 2 | `accounts` + `sqlstore` | Create / EnsureByEmail / Disable / RequireActive |
 | 3a | `passkey` + `sqlstore` + go-webauthn | Discoverable UV passkeys; RP from configured origin |
 | 3b | `magiclink` + `sqlstore` + Mailer | Email challenge; you send mail and mint session after Consume |
-| 3c | Sessions | REFERENCE_EXISTING (`scs` or hashed cookie like product sessions) |
+| 3c | `oidc` + memory/store | Social OIDC (Google/Apple…); link subject → account; mint session after Accept |
+| 3d | Sessions | REFERENCE_EXISTING (`scs` or hashed cookie like product sessions) |
 | 4 | `servicecred` + `sqlstore` | `Owner` = `accounts.Account.ID` |
 | 5 | `mcpoauth` + `sqlstore` | Consent after browser auth; Verify on MCP requests |
 | 6 | Official MCP SDK | Protocol server — not AMSL |
@@ -33,7 +35,9 @@ The tool/engine stays product code. AMSL owns repeated coordination seams.
 | 8 | `billing/subscription` | AcceptVerifiedEvent after Stripe signature verify |
 | 9 | `billing/portal` | Self-serve invoices / payment method / cancel |
 | 10 | Product entitlement | Projection status → allow/deny; **redirect ≠ paid** |
-| 11 | `delivery.go-validation` | Pin reusable CI workflow |
+| 11 | `tenant` + Runtime | Request → Provision → Ready; Runtime = Pulumi apply |
+| 12 | `tenantdnstls` + `containerdeploy` | `*.product.cloud` cert + digest-pinned Fargate |
+| 13 | `delivery.go-validation` | Pin reusable CI workflow |
 
 ## Auth notes (from ajent-social passkey patterns)
 
@@ -44,8 +48,10 @@ The tool/engine stays product code. AMSL owns repeated coordination seams.
 - Email magic is complementary for recovery/onboarding; ajent-social human
   accounts intentionally omit email in that product — AMSL still offers
   `magiclink` for products that need it.
-- After either Finish(passkey) or Consume(magiclink), call `accounts.RequireActive`
-  then mint **your** session.
+- After either Finish(passkey), Consume(magiclink), or Accept(oidc)+LinkBinding,
+  call `accounts.RequireActive` then mint **your** session.
+- OIDC redirect URIs and issuer trust are configured absolutes — never from
+  request `Host`. State is consume-once.
 
 ## User management
 
@@ -84,10 +90,19 @@ subs, _ := subscription.New(subStore)
 portalSvc, _ := portal.New(billStore, portalStripe)
 ```
 
+## Dedicated instances
+
+After entitlement is true, `tenant.Request` then `Provision` against a product
+`Runtime` that applies Pulumi (`tenantdnstls` for `slug.product.cloud`,
+`containerdeploy` for digest-pinned Fargate, optional shared
+`privatedatabase`). Hostname = `slug.baseDomain`. Destroy fails closed on
+runtime errors (status `failed`).
+
 ## What AMSL deliberately does not do
 
 Universal org/RBAC model, HTML login pages, email provider account setup, price
-catalog, or replacing the MCP SDK / go-webauthn / Stripe SDK.
+catalog, or replacing the MCP SDK / go-webauthn / Stripe SDK / Pulumi AWS
+provider.
 
 ## Evidence status
 

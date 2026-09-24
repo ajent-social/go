@@ -38,12 +38,17 @@ policy stay with the application. Checkout companions include
 
 Human auth CANDIDATEs for the hosted path: `accounts`, `passkey` (go-webauthn
 ceremonies; patterns informed by ajent-social human accounts, no private source
-copied), and `magiclink` (email challenge tokens). Each has a multi-host
-`sqlstore` adapter (PostgreSQL-compatible, including SereneDB). Browser session
-cookies remain REFERENCE_EXISTING (e.g. SCS).
+copied), `magiclink` (email challenge tokens), and `oidc` (OIDC
+authorization-code social login around go-oidc). Each of accounts/passkey/
+magiclink has a multi-host `sqlstore` adapter (PostgreSQL-compatible, including
+SereneDB). Browser session cookies remain REFERENCE_EXISTING (e.g. SCS).
+
+Hosted instance lifecycle CANDIDATE: `tenant` coordinates slug → provision →
+ready → upgrade/destroy around a product `Runtime` (typically Pulumi
+`containerdeploy` + `tenantdnstls`). Entitlement checks stay with the app.
 
 Composition recipe (CLI → hosted multi-tenant paid MCP with user/billing
-management and passkey/magic auth):
+management and passkey/magic/OIDC auth):
 [docs/recipes/cli-to-hosted-paid-mcp.md](docs/recipes/cli-to-hosted-paid-mcp.md).
 
 Read the [contract](docs/service-credentials.md),
