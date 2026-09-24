@@ -38,10 +38,17 @@ policy stay with the application. Checkout companions include
 
 Human auth CANDIDATEs for the hosted path: `accounts`, `passkey` (go-webauthn
 ceremonies; patterns informed by ajent-social human accounts, no private source
-copied), `magiclink` (email challenge tokens), and `oidc` (OIDC
-authorization-code social login around go-oidc). Each of accounts/passkey/
-magiclink has a multi-host `sqlstore` adapter (PostgreSQL-compatible, including
-SereneDB). Browser session cookies remain REFERENCE_EXISTING (e.g. SCS).
+copied), `magiclink` (email challenge tokens), `oidc` (OIDC authorization-code
+social login around go-oidc) with `oidc/github`, `oidc/apple`, and
+`oidc/microsoft` adapters, `passwordreset`, and `deviceflow` (RFC 8628 CLI
+login). Each of accounts/passkey/magiclink has a multi-host `sqlstore` adapter
+(PostgreSQL-compatible, including SereneDB). Browser session cookies remain
+REFERENCE_EXISTING (e.g. SCS).
+
+Additional identity/delivery CANDIDATEs: `mcpclientoauth` (product as OAuth
+**client** to remote MCP servers; sealed token blobs), `publishablekey`
+(embeddable public keys with origin allowlists; complements `servicecred`),
+and `webhookegress` (HMAC-signed outbound webhooks).
 
 Hosted instance lifecycle CANDIDATE: `tenant` coordinates slug → provision →
 ready → upgrade/destroy around a product `Runtime` (typically Pulumi
