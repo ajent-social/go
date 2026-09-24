@@ -53,3 +53,14 @@ reverified against this reviewed revision. It remains restricted maintainer
 reporting, not public adoption evidence. Public REAL_CONSUMER verification is
 NOT_RUN. Lifecycle remains CANDIDATE; the headless AI review is not human
 maintainer review.
+
+## 2026-09-24 — PostgreSQL store adapter
+
+Added `servicecred/pgstore` with idempotent schema, binding-checked revoke,
+create-without-overwrite and exact-binding list. Local execution:
+`go vet ./servicecred/pgstore/...` and `go test -race ./servicecred/pgstore/`
+against PostgreSQL on `/tmp` database `amsl_servicecred_test` — PASS (lifecycle,
+collision, concurrent revoke/verify, nil DB). CI gains a Postgres 16 service and
+`AMSL_PGSTORE_TEST_DSN`. Status remains CANDIDATE. Public second-consumer and
+restricted skills-discovery adoption are tracked separately; catalog promotion
+still requires human review.

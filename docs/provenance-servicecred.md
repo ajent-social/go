@@ -33,7 +33,15 @@ established implementations and remain outside this capability.
 
 bbolt v1.4.3 (MIT) supplies transactional local storage; golang.org/x/sys v0.29.0
 (BSD-3-Clause) supplies Unix flock calls for admission and writer coordination.
-The adapter is not a multi-host database; applications requiring that topology
-should supply a store with the same create/read/revoke consistency contract. No
-custom cryptography, payment client, MCP protocol or generic authorization
+The bolt adapter is not a multi-host database.
+
+`servicecred/pgstore` is an original PostgreSQL adapter implementing the same
+Store contract for multi-host deployments. It depends on
+`github.com/lib/pq` v1.10.9 (MIT) for PostgreSQL access and unique-violation
+detection. Applications may open `*sql.DB` with another PostgreSQL driver; the
+package still imports lib/pq for SQLSTATE handling. Schema DDL lives in the
+package and is applied idempotently by `Open`. No private schema or query text
+was copied.
+
+No custom cryptography, payment client, MCP protocol or generic authorization
 engine is introduced.

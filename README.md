@@ -7,9 +7,10 @@ This repository is the Go implementation home for
 `github.com/ajent-social/go`.
 
 The first CANDIDATE implementation is `servicecred`, with a durable local bbolt
-adapter in `servicecred/boltstore`. It provides issue-once machine secrets,
-explicit owner/resource/scopes, mandatory expiry and durable revocation. It is
-proposed for maintainer review, not a stable or released security API.
+adapter in `servicecred/boltstore` and a multi-host PostgreSQL adapter in
+`servicecred/pgstore`. It provides issue-once machine secrets, explicit
+owner/resource/scopes, mandatory expiry and durable revocation. It is proposed
+for maintainer review, not a stable or released security API.
 
 The second CANDIDATE is `mcpoauth`, a bounded OAuth 2.1 authorization server
 for a single MCP protected resource with public PKCE clients, plus a bbolt
@@ -26,10 +27,15 @@ Read the [contract](docs/service-credentials.md),
 Applications retain login, authorization, account-status and paid-access policy.
 The bbolt adapter uses local file locks and is supported on Unix platforms listed
 in the contract; on other platforms, provide another `Store` implementation.
+`pgstore` accepts an application-owned `*sql.DB` against PostgreSQL for shared
+authoritative storage across hosts.
 
 ```sh
 go vet ./...
 go test -race ./...
+# pgstore tests need PostgreSQL; CI sets AMSL_PGSTORE_TEST_DSN, or locally:
+#   createdb -h /tmp amsl_servicecred_test
+#   AMSL_PGSTORE_TEST_DSN='host=/tmp dbname=amsl_servicecred_test sslmode=disable'
 ```
 
 Use established libraries for crypto, sessions, payment clients and MCP. See
