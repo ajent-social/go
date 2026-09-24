@@ -252,7 +252,17 @@ func validSlug(s string) bool {
 }
 
 func validDigest(d string) bool {
-	return strings.HasPrefix(d, "sha256:") && len(d) == len("sha256:")+64
+	const prefix = "sha256:"
+	if !strings.HasPrefix(d, prefix) || len(d) != len(prefix)+64 {
+		return false
+	}
+	for i := len(prefix); i < len(d); i++ {
+		c := d[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func hostname(slug, base string) string {
