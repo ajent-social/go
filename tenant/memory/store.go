@@ -84,6 +84,18 @@ func (s *Store) Apply(_ context.Context, id string, expectedEpoch uint64, next t
 	if cur.LeaseEpoch != expectedEpoch {
 		return tenant.ErrConflict
 	}
+	if cur.Slug != next.Slug {
+		if other, ok := s.bySlug[next.Slug]; ok && other != id {
+			return tenant.ErrExists
+		}
+		delete(s.bySlug, cur.Slug)
+	}
+	if cur.AccountID != next.AccountID {
+		if other, ok := s.byAccount[next.AccountID]; ok && other != id {
+			return tenant.ErrExists
+		}
+		delete(s.byAccount, cur.AccountID)
+	}
 	next.LeaseEpoch = expectedEpoch + 1
 	s.byID[id] = next
 	s.bySlug[next.Slug] = id

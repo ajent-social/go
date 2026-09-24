@@ -41,6 +41,7 @@ const (
 )
 
 var slugRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+var domainRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$`)
 
 // Instance is one dedicated deployment for an account.
 type Instance struct {
@@ -91,8 +92,8 @@ func New(cfg Config, store Store, runtime Runtime) (*Service, error) {
 		return nil, ErrInvalid
 	}
 	d := strings.TrimSpace(strings.ToLower(cfg.BaseDomain))
-	if d == "" || strings.Contains(d, "*") || strings.HasPrefix(d, ".") {
-		return nil, fmt.Errorf("%w: BaseDomain required without wildcard", ErrInvalid)
+	if d == "" || strings.Contains(d, "*") || strings.HasPrefix(d, ".") || !domainRE.MatchString(d) {
+		return nil, fmt.Errorf("%w: BaseDomain must be a bare DNS domain without wildcard or scheme", ErrInvalid)
 	}
 	return &Service{store: store, runtime: runtime, baseDomain: d, now: time.Now}, nil
 }
@@ -146,6 +147,10 @@ func (s *Service) Provision(ctx context.Context, id string) (Instance, error) {
 	inst, err := s.claim(ctx, id, []Status{StatusRequested, StatusFailed}, StatusProvisioning)
 	if err != nil {
 		return Instance{}, err
+	}
+	if !validDigest(inst.ImageDigest) {
+		_ = s.fail(ctx, inst, fmt.Errorf("%w: ImageDigest required before ready", ErrInvalid))
+		return Instance{}, fmt.Errorf("%w: ImageDigest required before ready", ErrInvalid)
 	}
 	host, err := s.runtime.Provision(ctx, inst)
 	if err != nil {

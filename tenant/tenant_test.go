@@ -28,7 +28,8 @@ func TestLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inst, err := svc.Request(ctx, tenant.RequestInput{AccountID: "a1", Slug: "example"})
+	digest := "sha256:" + "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	inst, err := svc.Request(ctx, tenant.RequestInput{AccountID: "a1", Slug: "example", ImageDigest: digest})
 	if err != nil || inst.Hostname != "example.zatiti.cloud" || inst.Status != tenant.StatusRequested {
 		t.Fatalf("%#v %v", inst, err)
 	}
@@ -36,7 +37,6 @@ func TestLifecycle(t *testing.T) {
 	if err != nil || ready.Status != tenant.StatusReady {
 		t.Fatalf("%#v %v", ready, err)
 	}
-	digest := "sha256:" + "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	up, err := svc.Upgrade(ctx, inst.ID, digest)
 	if err != nil || up.ImageDigest != digest {
 		t.Fatalf("%#v %v", up, err)
@@ -47,6 +47,26 @@ func TestLifecycle(t *testing.T) {
 	}
 }
 
+func TestProvisionRequiresDigest(t *testing.T) {
+	ctx := context.Background()
+	store := memory.New()
+	svc, err := tenant.New(tenant.Config{BaseDomain: "zatiti.cloud"}, store, fakeRT{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, err := svc.Request(ctx, tenant.RequestInput{AccountID: "a1", Slug: "nodigest"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Provision(ctx, inst.ID); !errors.Is(err, tenant.ErrInvalid) {
+		t.Fatalf("got %v", err)
+	}
+	got, err := store.Lookup(ctx, inst.ID)
+	if err != nil || got.Status != tenant.StatusFailed {
+		t.Fatalf("%#v %v", got, err)
+	}
+}
+
 func TestProvisionFailureMarksFailed(t *testing.T) {
 	ctx := context.Background()
 	store := memory.New()
@@ -54,7 +74,8 @@ func TestProvisionFailureMarksFailed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inst, err := svc.Request(ctx, tenant.RequestInput{AccountID: "a1", Slug: "demo"})
+	digest := "sha256:" + "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	inst, err := svc.Request(ctx, tenant.RequestInput{AccountID: "a1", Slug: "demo", ImageDigest: digest})
 	if err != nil {
 		t.Fatal(err)
 	}
