@@ -8,7 +8,13 @@ require golang.org/x/sys v0.45.0
 
 require github.com/lib/pq v1.10.9
 
-require github.com/stripe/stripe-go/v82 v82.5.1
+require (
+	github.com/coreos/go-oidc/v3 v3.21.0
+	github.com/stripe/stripe-go/v82 v82.5.1
+	golang.org/x/oauth2 v0.37.0
+)
+
+require github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 
 require (
 	github.com/fxamacker/cbor/v2 v2.9.2 // indirect
