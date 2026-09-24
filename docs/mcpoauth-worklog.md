@@ -155,3 +155,18 @@ registration bounds and sweep latency remain application responsibilities.
 Strict refresh reuse revocation after lost responses is intentional, documented,
 and not evidence of an independent security audit. No cloud client qualification
 or human approval is claimed.
+
+## 2026-09-24 — owner acceptance and first deployment
+
+The owner explicitly selected the presented approval option: accept the
+candidate design, merge the three PRs and deploy Serenity after CI. This
+authorization is recorded by the implementing agent in Go PR #2; the
+underlying conversation is restricted, not an owner-authored GitHub review.
+The security API remains CANDIDATE as requested.
+
+Serenity PR #271 merged and v0.1.9-hosted-candidate deployed after its release
+security gate. The agent's live verification passed discovery, email sign-in,
+project consent, PKCE exchange, refresh, MCP initialization/tool discovery
+and revocation. The probe made no embedding requests and cleaned up its
+connection/session. Native Claude Code and Codex login plus recall had already
+passed locally. Cloud products and independent audit remain unqualified.
