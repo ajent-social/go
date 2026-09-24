@@ -31,16 +31,7 @@ evidence; entitlement policy stays with the application.
 A fourth CANDIDATE is `billing/subscription` for a durable verified-event
 inbox and local subscription projection after SDK signature verification. See
 [billing subscription](docs/billing-subscription.md). Grace and `past_due`
-policy stay with the application. Stripe checkout is
-available via `billing/checkout/stripeadapt`; multi-host state via
-`billing/checkout/sqlstore`.
-
-A fourth CANDIDATE is `billing/subscription` for idempotent local subscription
-projections from verified provider events. See
-[billing subscription](docs/billing-subscription.md).
-
-Composition recipe for turning a CLI into a hosted multi-tenant paid MCP
-service: [docs/recipes/cli-to-hosted-paid-mcp.md](docs/recipes/cli-to-hosted-paid-mcp.md).
+policy stay with the application.
 
 Read the [contract](docs/service-credentials.md),
 [provenance and alternatives](docs/provenance-servicecred.md), and
