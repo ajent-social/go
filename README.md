@@ -16,7 +16,8 @@ security API.
 
 The second CANDIDATE is `mcpoauth`, a bounded OAuth 2.1 authorization server
 for a single MCP protected resource with public PKCE clients, plus a bbolt
-reference store in `mcpoauth/boltstore`. It is an owner-authorized adaptation
+reference store in `mcpoauth/boltstore` and a multi-host SQL adapter in
+`mcpoauth/sqlstore`. It is an owner-authorized adaptation
 of restricted product code; see the [contract](docs/mcp-oauth.md),
 [provenance](docs/provenance-mcpoauth.md) and
 [worklog](docs/mcpoauth-worklog.md). Refresh token rotation with

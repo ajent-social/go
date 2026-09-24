@@ -180,6 +180,9 @@ WHERE customer_ref = $1 AND lease_epoch = $7`,
 }
 
 func isUnique(err error) bool {
+	if err == nil {
+		return false
+	}
 	type stater interface{ SQLState() string }
 	var st stater
 	if errors.As(err, &st) && st.SQLState() == "23505" {

@@ -47,7 +47,8 @@ implementation.
 - Rate limit the public endpoints at the mount point using `RemoteAddr` or an
   explicitly trusted proxy header.
 - Provide a durable `Store`. The bbolt adapter is a single-process reference;
-  no in-memory store is shipped.
+  `mcpoauth/sqlstore` targets PostgreSQL-compatible multi-host deployments
+  (including SereneDB via DSN/driver swap). No in-memory store is shipped.
 
 ## Validation rules
 
