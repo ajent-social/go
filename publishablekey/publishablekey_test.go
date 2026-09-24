@@ -57,4 +57,10 @@ func TestOriginAllowed(t *testing.T) {
 	if publishablekey.OriginAllowed("https://evil.com", []string{"https://*.example.com"}) {
 		t.Fatal("expected deny")
 	}
+	if publishablekey.OriginAllowed("https://a.example.com:8443", []string{"https://*.example.com"}) {
+		t.Fatal("expected deny non-default port")
+	}
+	if !publishablekey.OriginAllowed("https://a.example.com:8443", []string{"https://*.example.com:8443"}) {
+		t.Fatal("expected allow matching port")
+	}
 }
