@@ -14,18 +14,18 @@ import (
 	_ "github.com/lib/pq"
 )
 
-func testDSN(t *testing.T) string {
+func testDSN(t *testing.T) (dsn string, required bool) {
 	t.Helper()
-	dsn := os.Getenv("AMSL_PGSTORE_TEST_DSN")
-	if dsn == "" {
-		dsn = "host=/tmp dbname=amsl_servicecred_test sslmode=disable"
+	if dsn := os.Getenv("AMSL_PGSTORE_TEST_DSN"); dsn != "" {
+		return dsn, true
 	}
-	return dsn
+	return "host=/tmp dbname=amsl_servicecred_test sslmode=disable", false
 }
 
 func openStore(t *testing.T) (*servicecred.Service, *pgstore.Store, *sql.DB) {
 	t.Helper()
-	db, err := sql.Open("postgres", testDSN(t))
+	dsn, required := testDSN(t)
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,6 +33,9 @@ func openStore(t *testing.T) (*servicecred.Service, *pgstore.Store, *sql.DB) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
+		if required {
+			t.Fatalf("postgres required by AMSL_PGSTORE_TEST_DSN but unavailable: %v", err)
+		}
 		t.Skipf("postgres unavailable: %v", err)
 	}
 	// Isolate concurrent tests with a truncated table after schema apply.
@@ -150,5 +153,35 @@ func TestOpenNilDB(t *testing.T) {
 	_, err := pgstore.Open(context.Background(), nil)
 	if !errors.Is(err, servicecred.ErrInvalid) {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestPostgresRevokeRejectsZeroTimeAndHidesBindingMismatch(t *testing.T) {
+	ctx := context.Background()
+	_, store, _ := openStore(t)
+	now := time.Now().UTC()
+	r := servicecred.Record{
+		Metadata: servicecred.Metadata{
+			ID: "fedcba9876543210fedcba9876543210",
+			Grant: servicecred.Grant{
+				Access:    servicecred.Access{Owner: "owner", Resource: "api", Scopes: []string{"read"}},
+				ExpiresAt: now.Add(time.Hour),
+			},
+			CreatedAt: now,
+		},
+	}
+	copy(r.Digest[:], []byte("fedcba9876543210fedcba9876543210"))
+	if err := store.Create(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Revoke(ctx, r.ID, r.Owner, r.Resource, time.Time{}); !errors.Is(err, servicecred.ErrInvalid) {
+		t.Fatalf("zero time: %v", err)
+	}
+	if err := store.Revoke(ctx, r.ID, "other", r.Resource, now); !errors.Is(err, servicecred.ErrNotFound) {
+		t.Fatalf("binding mismatch should hide as not found: %v", err)
+	}
+	got, err := store.Lookup(ctx, r.ID)
+	if err != nil || !got.RevokedAt.IsZero() {
+		t.Fatalf("mismatch must not revoke: %#v %v", got, err)
 	}
 }
