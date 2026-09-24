@@ -63,3 +63,21 @@ swap to SereneDB is a driver/DSN change. Local execution: `go vet` /
 `go test -race ./servicecred/sqlstore/` against PostgreSQL on `/tmp` — PASS.
 CI uses `AMSL_SQLSTORE_TEST_DSN` with a Postgres 16 service. Status remains
 CANDIDATE.
+
+## 2026-09-24 — Restricted concurrent consumer (skills-discovery)
+
+A private application branch wires `servicecred` + `sqlstore` through a thin
+helper (`Issue`/`Verify`/`Revoke` with agent-scoped owner binding) and an
+integration test that proves revoke fail-closed. Legacy product tokens remain
+on their existing path; no production HTTP mint of `amsl1_` yet. Evidence is
+RESTRICTED, MAINTAINER_REPORTED, local branch only — not public REAL_CONSUMER
+and not a merged release. No private consumer identity is published here.
+
+## 2026-09-24 — Public consumer PR (zerfoo)
+
+Open pull request https://github.com/zerfoo/zerfoo/pull/1014 wires
+`servicecred` + `boltstore` behind serve `--keystore` with Issue/Verify/Revoke
+package tests (`go test ./serve/ ./cmd/cli/` PASS). Existing `zf_` keys are not
+migrated. This is independently reviewable public source; it is not yet a
+merged consumer release or production deployment. REAL_CONSUMER remains
+NOT_RUN until a merged pin is reverified. Status remains CANDIDATE.
