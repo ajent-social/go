@@ -20,3 +20,10 @@ expanding. No billing provider client, universal user model or UI framework.
 Next gates: merge AMSL sqlstore PR and zerfoo consumer PR after maintainer
 review; reverify an immutable module pin; keep status CANDIDATE until human
 review.
+
+## 2026-09-24 — merges and delivery adoption
+
+Merged: go#4 (sqlstore), capabilities#5 (catalog evidence), zerfoo#1014
+(public consumer). Adopted `delivery.go-validation` reusable workflow from
+`ajent-social/workflows@2377e766f704dfe984a1e589933b91f2bc3c50a1` for
+credential-contracts; product-specific boltstore matrix stays local.

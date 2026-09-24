@@ -81,3 +81,10 @@ package tests (`go test ./serve/ ./cmd/cli/` PASS). Existing `zf_` keys are not
 migrated. This is independently reviewable public source; it is not yet a
 merged consumer release or production deployment. REAL_CONSUMER remains
 NOT_RUN until a merged pin is reverified. Status remains CANDIDATE.
+
+## 2026-09-24 — sqlstore merged; go-validation adopted
+
+`servicecred/sqlstore` merged via PR #4. Public zerfoo consumer merged via
+zerfoo#1014. CI now calls AMSL `delivery.go-validation` at workflows revision
+`2377e766f704dfe984a1e589933b91f2bc3c50a1` with Postgres enabled. Status remains
+CANDIDATE; HUMAN_REVIEW and merged-pin REAL_CONSUMER re-verify still open.
