@@ -1,4 +1,4 @@
-package pgstore_test
+package sqlstore_test
 
 import (
 	"context"
@@ -10,19 +10,23 @@ import (
 	"time"
 
 	"github.com/ajent-social/go/servicecred"
-	"github.com/ajent-social/go/servicecred/pgstore"
+	"github.com/ajent-social/go/servicecred/sqlstore"
 	_ "github.com/lib/pq"
 )
 
 func testDSN(t *testing.T) (dsn string, required bool) {
 	t.Helper()
+	if dsn := os.Getenv("AMSL_SQLSTORE_TEST_DSN"); dsn != "" {
+		return dsn, true
+	}
+	// Backward-compatible alias used by the earlier pgstore CI wiring.
 	if dsn := os.Getenv("AMSL_PGSTORE_TEST_DSN"); dsn != "" {
 		return dsn, true
 	}
 	return "host=/tmp dbname=amsl_servicecred_test sslmode=disable", false
 }
 
-func openStore(t *testing.T) (*servicecred.Service, *pgstore.Store, *sql.DB) {
+func openStore(t *testing.T) (*servicecred.Service, *sqlstore.Store, *sql.DB) {
 	t.Helper()
 	dsn, required := testDSN(t)
 	db, err := sql.Open("postgres", dsn)
@@ -34,12 +38,11 @@ func openStore(t *testing.T) (*servicecred.Service, *pgstore.Store, *sql.DB) {
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
 		if required {
-			t.Fatalf("postgres required by AMSL_PGSTORE_TEST_DSN but unavailable: %v", err)
+			t.Fatalf("sqlstore backend required by test DSN but unavailable: %v", err)
 		}
-		t.Skipf("postgres unavailable: %v", err)
+		t.Skipf("sqlstore backend unavailable: %v", err)
 	}
-	// Isolate concurrent tests with a truncated table after schema apply.
-	store, err := pgstore.Open(ctx, db)
+	store, err := sqlstore.Open(ctx, db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +63,7 @@ func grant() servicecred.Grant {
 	}
 }
 
-func TestPostgresLifecycle(t *testing.T) {
+func TestSQLLifecycle(t *testing.T) {
 	ctx := context.Background()
 	svc, _, _ := openStore(t)
 	g := grant()
@@ -92,7 +95,7 @@ func TestPostgresLifecycle(t *testing.T) {
 	}
 }
 
-func TestPostgresCreateCollision(t *testing.T) {
+func TestSQLCreateCollision(t *testing.T) {
 	ctx := context.Background()
 	_, store, _ := openStore(t)
 	now := time.Now().UTC()
@@ -115,7 +118,7 @@ func TestPostgresCreateCollision(t *testing.T) {
 	}
 }
 
-func TestPostgresConcurrentRevokeAndVerify(t *testing.T) {
+func TestSQLConcurrentRevokeAndVerify(t *testing.T) {
 	ctx := context.Background()
 	svc, _, _ := openStore(t)
 	g := grant()
@@ -150,13 +153,13 @@ func TestPostgresConcurrentRevokeAndVerify(t *testing.T) {
 }
 
 func TestOpenNilDB(t *testing.T) {
-	_, err := pgstore.Open(context.Background(), nil)
+	_, err := sqlstore.Open(context.Background(), nil)
 	if !errors.Is(err, servicecred.ErrInvalid) {
 		t.Fatalf("got %v", err)
 	}
 }
 
-func TestPostgresRevokeRejectsZeroTimeAndHidesBindingMismatch(t *testing.T) {
+func TestSQLRevokeRejectsZeroTimeAndHidesBindingMismatch(t *testing.T) {
 	ctx := context.Background()
 	_, store, _ := openStore(t)
 	now := time.Now().UTC()

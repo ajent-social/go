@@ -1,8 +1,11 @@
-// Package pgstore persists service credentials in PostgreSQL.
-// It implements the same create/lookup/revoke/list contract as boltstore for
-// multi-host deployments. Applications supply a *sql.DB opened against
-// PostgreSQL; this package does not manage connection pooling policy.
-package pgstore
+// Package sqlstore persists service credentials via database/sql against
+// PostgreSQL-compatible servers (PostgreSQL, SereneDB, and others that speak
+// the same SQL dialect and wire protocol).
+//
+// Swap backends by changing the driver registration and DSN used to open
+// *sql.DB; this package does not embed a vendor client. Connection pooling,
+// TLS and migration ownership remain with the application.
+package sqlstore
 
 import (
 	"context"
@@ -14,17 +17,19 @@ import (
 	"time"
 
 	"github.com/ajent-social/go/servicecred"
-	"github.com/lib/pq"
 )
 
 // Schema is the DDL applied by Open. Applications may apply it out-of-band
 // instead; Open is idempotent (IF NOT EXISTS).
+//
+// Types stay within the common PostgreSQL-compatible subset so a DSN swap to
+// SereneDB (or another compatible server) does not require package changes.
 const Schema = `
 CREATE TABLE IF NOT EXISTS amsl_service_credentials (
   id TEXT PRIMARY KEY,
   owner TEXT NOT NULL,
   resource TEXT NOT NULL,
-  scopes JSONB NOT NULL,
+  scopes TEXT NOT NULL,
   digest BYTEA NOT NULL,
   created_at TIMESTAMPTZ NOT NULL,
   expires_at TIMESTAMPTZ NOT NULL,
@@ -36,14 +41,14 @@ CREATE INDEX IF NOT EXISTS amsl_service_credentials_binding_idx
   ON amsl_service_credentials (owner, resource);
 `
 
-// Store is a PostgreSQL adapter. Concurrent callers share the provided *sql.DB.
+// Store is a SQL adapter. Concurrent callers share the provided *sql.DB.
 type Store struct {
 	db *sql.DB
 }
 
 // Open verifies connectivity, applies Schema, and returns a Store.
-// db must already be configured for PostgreSQL (for example via
-// github.com/lib/pq or jackc/pgx/v5/stdlib).
+// db must already be opened against a PostgreSQL-compatible server
+// (for example lib/pq, pgx/stdlib, or a SereneDB driver).
 func Open(ctx context.Context, db *sql.DB) (*Store, error) {
 	if db == nil {
 		return nil, servicecred.ErrInvalid
@@ -74,8 +79,8 @@ func (s *Store) Create(ctx context.Context, r servicecred.Record) error {
 	_, err = s.db.ExecContext(ctx, `
 INSERT INTO amsl_service_credentials
   (id, owner, resource, scopes, digest, created_at, expires_at, revoked_at)
-VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, NULL)`,
-		r.ID, r.Owner, r.Resource, scopes, r.Digest[:],
+VALUES ($1, $2, $3, $4, $5, $6, $7, NULL)`,
+		r.ID, r.Owner, r.Resource, string(scopes), r.Digest[:],
 		r.CreatedAt.UTC(), r.ExpiresAt.UTC())
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -92,7 +97,7 @@ func (s *Store) Lookup(ctx context.Context, id string) (servicecred.Record, erro
 	}
 	var r servicecred.Record
 	var digest []byte
-	var scopes []byte
+	var scopes string
 	var revoked sql.NullTime
 	err := s.db.QueryRowContext(ctx, `
 SELECT id, owner, resource, scopes, digest, created_at, expires_at, revoked_at
@@ -108,7 +113,7 @@ FROM amsl_service_credentials WHERE id = $1`, id).Scan(
 	if r.ID != id || len(digest) != 32 {
 		return servicecred.Record{}, fmt.Errorf("credential record corrupt")
 	}
-	if err := json.Unmarshal(scopes, &r.Scopes); err != nil {
+	if err := json.Unmarshal([]byte(scopes), &r.Scopes); err != nil {
 		return servicecred.Record{}, fmt.Errorf("decode scopes: %w", err)
 	}
 	copy(r.Digest[:], digest)
@@ -182,13 +187,13 @@ ORDER BY created_at ASC, id ASC`, owner, resource)
 	out := []servicecred.Metadata{}
 	for rows.Next() {
 		var m servicecred.Metadata
-		var scopes []byte
+		var scopes string
 		var revoked sql.NullTime
 		if err := rows.Scan(&m.ID, &m.Owner, &m.Resource, &scopes,
 			&m.CreatedAt, &m.ExpiresAt, &revoked); err != nil {
 			return nil, fmt.Errorf("decode credential metadata: %w", err)
 		}
-		if err := json.Unmarshal(scopes, &m.Scopes); err != nil {
+		if err := json.Unmarshal([]byte(scopes), &m.Scopes); err != nil {
 			return nil, fmt.Errorf("decode scopes: %w", err)
 		}
 		m.CreatedAt = m.CreatedAt.UTC()
@@ -204,12 +209,17 @@ ORDER BY created_at ASC, id ASC`, owner, resource)
 	return out, nil
 }
 
+// sqlStater is implemented by several PostgreSQL drivers (for example pgx).
+type sqlStater interface {
+	SQLState() string
+}
+
 func isUniqueViolation(err error) bool {
-	var pqErr *pq.Error
-	if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+	var st sqlStater
+	if errors.As(err, &st) && st.SQLState() == "23505" {
 		return true
 	}
-	// pgx and other drivers may wrap SQLSTATE without *pq.Error.
+	// Drivers without SQLState() (lib/pq) still expose SQLSTATE in the message.
 	msg := err.Error()
 	return strings.Contains(msg, "23505") || strings.Contains(msg, "unique constraint") || strings.Contains(msg, "duplicate key")
 }

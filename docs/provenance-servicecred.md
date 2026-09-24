@@ -35,13 +35,16 @@ bbolt v1.4.3 (MIT) supplies transactional local storage; golang.org/x/sys v0.29.
 (BSD-3-Clause) supplies Unix flock calls for admission and writer coordination.
 The bolt adapter is not a multi-host database.
 
-`servicecred/pgstore` is an original PostgreSQL adapter implementing the same
-Store contract for multi-host deployments. It depends on
-`github.com/lib/pq` v1.10.9 (MIT) for PostgreSQL access and unique-violation
-detection. Applications may open `*sql.DB` with another PostgreSQL driver; the
-package still imports lib/pq for SQLSTATE handling. Schema DDL lives in the
-package and is applied idempotently by `Open`. No private schema or query text
-was copied.
+`servicecred/sqlstore` is an original `database/sql` adapter for
+PostgreSQL-compatible servers. It implements the same Store contract for
+multi-host deployments and does not embed a vendor client: applications open
+`*sql.DB` with their chosen driver (PostgreSQL, SereneDB, and compatible
+servers). Scopes are JSON text rather than vendor-specific JSONB casts so a
+DSN swap does not require package changes. Unique-violation detection uses the
+SQLSTATE `23505` when the driver exposes `SQLState()`, with a message fallback
+for drivers that do not. Schema DDL lives in the package and is applied
+idempotently by `Open`. No private schema or query text was copied. Test code
+may import `github.com/lib/pq` (MIT) solely to open a PostgreSQL test DSN.
 
 No custom cryptography, payment client, MCP protocol or generic authorization
 engine is introduced.

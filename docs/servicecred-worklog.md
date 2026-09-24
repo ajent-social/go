@@ -54,13 +54,12 @@ reporting, not public adoption evidence. Public REAL_CONSUMER verification is
 NOT_RUN. Lifecycle remains CANDIDATE; the headless AI review is not human
 maintainer review.
 
-## 2026-09-24 — PostgreSQL store adapter
+## 2026-09-24 — PostgreSQL-compatible SQL store adapter
 
-Added `servicecred/pgstore` with idempotent schema, binding-checked revoke,
-create-without-overwrite and exact-binding list. Local execution:
-`go vet ./servicecred/pgstore/...` and `go test -race ./servicecred/pgstore/`
-against PostgreSQL on `/tmp` database `amsl_servicecred_test` — PASS (lifecycle,
-collision, concurrent revoke/verify, nil DB). CI gains a Postgres 16 service and
-`AMSL_PGSTORE_TEST_DSN`. Status remains CANDIDATE. Public second-consumer and
-restricted skills-discovery adoption are tracked separately; catalog promotion
-still requires human review.
+Added `servicecred/sqlstore` (renamed from an initial `pgstore` draft) with
+idempotent schema, binding-checked revoke, create-without-overwrite and
+exact-binding list. The package targets PostgreSQL-compatible servers so a
+swap to SereneDB is a driver/DSN change. Local execution: `go vet` /
+`go test -race ./servicecred/sqlstore/` against PostgreSQL on `/tmp` — PASS.
+CI uses `AMSL_SQLSTORE_TEST_DSN` with a Postgres 16 service. Status remains
+CANDIDATE.

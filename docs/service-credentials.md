@@ -80,17 +80,18 @@ adapter is available on Darwin, DragonFly, FreeBSD, illumos, Linux, NetBSD,
 OpenBSD and Solaris. `Open` returns `errors.ErrUnsupported` on other platforms;
 applications can use another Store implementation there.
 
-### PostgreSQL (`servicecred/pgstore`)
+### SQL (`servicecred/sqlstore`)
 
-`servicecred/pgstore.Open(ctx, db)` takes an application-owned `*sql.DB` opened
-against PostgreSQL, pings it, and applies an idempotent schema creating
-`amsl_service_credentials`. Scopes are stored as JSONB. Create uses insert
-without overwrite (unique primary key → `ErrExists`). Revoke locks the row
-(`FOR UPDATE`), checks the exact owner/resource binding, and is idempotent.
+`servicecred/sqlstore.Open(ctx, db)` takes an application-owned `*sql.DB` opened
+against a PostgreSQL-compatible server (PostgreSQL, [SereneDB](https://github.com/serenedb/serenedb),
+and peers that share the dialect), pings it, and applies an idempotent schema
+creating `amsl_service_credentials`. Scopes are stored as JSON text. Create uses
+insert without overwrite (unique primary key → `ErrExists`). Revoke locks the
+row (`FOR UPDATE`), checks the exact owner/resource binding, and is idempotent.
 List returns sanitized metadata for one exact binding, including revoked
-records. Connection pooling, TLS, credentials and migration ownership remain
-with the application. This adapter is for multi-host deployments that need
-shared authoritative storage; it does not replace product authorization policy.
+records. Connection pooling, TLS, credentials, driver choice and migration
+ownership remain with the application. Swapping backends is a DSN/driver change;
+this package does not embed a vendor client.
 
 ## Review gates
 
