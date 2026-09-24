@@ -20,3 +20,9 @@ return `ErrBusy`. `StartCheckout` derives a bounded EnsureCustomer attempt ID
 so max-length checkout attempts no longer fail validation. Tests cover long
 attempt IDs and stale-lease protection.
 
+## 2026-09-24 — stripeadapt + sqlstore
+
+Added `billing/checkout/stripeadapt` (official stripe-go/v82 customer + Checkout
+Session) and `billing/checkout/sqlstore` (PG-compatible customers/attempts).
+Composition recipe: `docs/recipes/cli-to-hosted-paid-mcp.md`.
+

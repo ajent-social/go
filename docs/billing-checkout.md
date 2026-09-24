@@ -23,8 +23,9 @@ caller (typically after verified webhooks / subscription reconciliation).
 ## Store
 
 `Store` abstracts durable bindings and attempts. `checkout/memory` is for tests
-and single-process demos. SQL adapters can follow the same interface (same
-swap pattern as `servicecred/sqlstore`).
+and single-process demos. `checkout/sqlstore` targets PostgreSQL-compatible
+servers (including SereneDB). `checkout/stripeadapt` wraps the official Stripe
+Go SDK as a `Provider`.
 
 ## Non-goals
 

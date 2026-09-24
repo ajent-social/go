@@ -170,3 +170,10 @@ project consent, PKCE exchange, refresh, MCP initialization/tool discovery
 and revocation. The probe made no embedding requests and cleaned up its
 connection/session. Native Claude Code and Codex login plus recall had already
 passed locally. Cloud products and independent audit remain unqualified.
+
+## 2026-09-24 — multi-host sqlstore
+
+Added `mcpoauth/sqlstore` for PostgreSQL-compatible servers so MCP OAuth state
+can be shared across replicas. Covered create/consume, CreateGrant atomicity
+and refresh reuse → family revoke. boltstore remains the single-host
+reference. Composition recipe: `docs/recipes/cli-to-hosted-paid-mcp.md`.

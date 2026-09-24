@@ -16,7 +16,8 @@ security API.
 
 The second CANDIDATE is `mcpoauth`, a bounded OAuth 2.1 authorization server
 for a single MCP protected resource with public PKCE clients, plus a bbolt
-reference store in `mcpoauth/boltstore`. It is an owner-authorized adaptation
+reference store in `mcpoauth/boltstore` and a multi-host SQL adapter in
+`mcpoauth/sqlstore`. It is an owner-authorized adaptation
 of restricted product code; see the [contract](docs/mcp-oauth.md),
 [provenance](docs/provenance-mcpoauth.md) and
 [worklog](docs/mcpoauth-worklog.md). Refresh token rotation with
@@ -27,6 +28,22 @@ A third CANDIDATE is `billing/checkout` for durable customer binding and
 hosted checkout attempt recovery around an established payment provider. See
 [billing checkout](docs/billing-checkout.md). Redirect URLs are not payment
 evidence; entitlement policy stays with the application.
+
+A fourth CANDIDATE is `billing/subscription` for a durable verified-event
+inbox and local subscription projection after SDK signature verification. See
+[billing subscription](docs/billing-subscription.md). Grace and `past_due`
+policy stay with the application. Checkout companions include
+`billing/checkout/stripeadapt`, `billing/checkout/sqlstore`, and
+`billing/portal` (Stripe Customer Portal for self-serve billing management).
+
+Human auth CANDIDATEs for the hosted path: `accounts` (thin subject registry),
+`passkey` (go-webauthn ceremonies; patterns informed by ajent-social human
+accounts, no private source copied), and `magiclink` (email challenge tokens).
+Browser session cookies remain REFERENCE_EXISTING (e.g. SCS).
+
+Composition recipe (CLI → hosted multi-tenant paid MCP with user/billing
+management and passkey/magic auth):
+[docs/recipes/cli-to-hosted-paid-mcp.md](docs/recipes/cli-to-hosted-paid-mcp.md).
 
 Read the [contract](docs/service-credentials.md),
 [provenance and alternatives](docs/provenance-servicecred.md), and
