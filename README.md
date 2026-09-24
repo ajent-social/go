@@ -23,6 +23,11 @@ of restricted product code; see the [contract](docs/mcp-oauth.md),
 reuse-triggered family revocation is a new extension on top of the extracted
 authorization-code flow.
 
+A third CANDIDATE is `billing/checkout` for durable customer binding and
+hosted checkout attempt recovery around an established payment provider. See
+[billing checkout](docs/billing-checkout.md). Redirect URLs are not payment
+evidence; entitlement policy stays with the application.
+
 Read the [contract](docs/service-credentials.md),
 [provenance and alternatives](docs/provenance-servicecred.md), and
 [implementation worklog](docs/servicecred-worklog.md) before adopting it.
