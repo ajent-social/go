@@ -35,6 +35,9 @@ CREATE TABLE IF NOT EXISTS amsl_billing_attempts (
 );
 CREATE INDEX IF NOT EXISTS amsl_billing_attempts_active_idx
   ON amsl_billing_attempts (kind, account, status);
+CREATE UNIQUE INDEX IF NOT EXISTS amsl_billing_attempts_inflight_uidx
+  ON amsl_billing_attempts (kind, account)
+  WHERE status IN ('claimed', 'unknown');
 `
 
 // Store is a multi-host checkout.Store.
@@ -107,14 +110,8 @@ func (s *Store) ClaimAttempt(ctx context.Context, claim checkout.AttemptClaim) (
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var r checkout.AttemptRecord
-	err = tx.QueryRowContext(ctx, `
-SELECT account, attempt, kind, request_hash, idempotency_key, provider_ref, customer_ref,
-       checkout_url, status, lease_epoch, created_at, updated_at
-FROM amsl_billing_attempts WHERE account = $1 AND attempt = $2 FOR UPDATE`, claim.Account, claim.Attempt).Scan(
-		&r.Account, &r.Attempt, &r.Kind, &r.RequestHash, &r.IdempotencyKey, &r.ProviderRef,
-		&r.CustomerRef, &r.CheckoutURL, &r.Status, &r.LeaseEpoch, &r.CreatedAt, &r.UpdatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
+	r, err := lookupAttemptTx(ctx, tx, claim.Account, claim.Attempt)
+	if errors.Is(err, checkout.ErrNotFound) {
 		var busy string
 		qerr := tx.QueryRowContext(ctx, `
 SELECT attempt FROM amsl_billing_attempts
@@ -140,7 +137,19 @@ VALUES ($1,$2,$3,$4,$5,'','','',$6,$7,$8,$9)`,
 			r.Account, r.Attempt, r.Kind, r.RequestHash, r.IdempotencyKey,
 			r.Status, r.LeaseEpoch, r.CreatedAt.UTC(), r.UpdatedAt.UTC())
 		if err != nil {
-			return checkout.AttemptRecord{}, err
+			if !isUnique(err) {
+				return checkout.AttemptRecord{}, err
+			}
+			// Concurrent insert: either same attempt (reclaim) or inflight unique (busy).
+			again, lerr := lookupAttemptTx(ctx, tx, claim.Account, claim.Attempt)
+			if errors.Is(lerr, checkout.ErrNotFound) {
+				return checkout.AttemptRecord{}, checkout.ErrBusy
+			}
+			if lerr != nil {
+				return checkout.AttemptRecord{}, lerr
+			}
+			r = again
+			goto reclaim
 		}
 		if err := tx.Commit(); err != nil {
 			return checkout.AttemptRecord{}, err
@@ -150,6 +159,8 @@ VALUES ($1,$2,$3,$4,$5,'','','',$6,$7,$8,$9)`,
 	if err != nil {
 		return checkout.AttemptRecord{}, err
 	}
+
+reclaim:
 	if r.RequestHash != claim.RequestHash {
 		_, err = tx.ExecContext(ctx, `
 UPDATE amsl_billing_attempts SET status = $3, updated_at = $4 WHERE account = $1 AND attempt = $2`,
@@ -182,6 +193,24 @@ WHERE account = $1 AND attempt = $2`, claim.Account, claim.Attempt, r.Status, r.
 		return checkout.AttemptRecord{}, err
 	}
 	r.CreatedAt = r.CreatedAt.UTC()
+	return r, nil
+}
+
+func lookupAttemptTx(ctx context.Context, tx *sql.Tx, account checkout.AccountID, attempt checkout.AttemptID) (checkout.AttemptRecord, error) {
+	var r checkout.AttemptRecord
+	err := tx.QueryRowContext(ctx, `
+SELECT account, attempt, kind, request_hash, idempotency_key, provider_ref, customer_ref,
+       checkout_url, status, lease_epoch, created_at, updated_at
+FROM amsl_billing_attempts WHERE account = $1 AND attempt = $2 FOR UPDATE`, account, attempt).Scan(
+		&r.Account, &r.Attempt, &r.Kind, &r.RequestHash, &r.IdempotencyKey, &r.ProviderRef,
+		&r.CustomerRef, &r.CheckoutURL, &r.Status, &r.LeaseEpoch, &r.CreatedAt, &r.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return checkout.AttemptRecord{}, checkout.ErrNotFound
+	}
+	if err != nil {
+		return checkout.AttemptRecord{}, err
+	}
+	r.CreatedAt, r.UpdatedAt = r.CreatedAt.UTC(), r.UpdatedAt.UTC()
 	return r, nil
 }
 

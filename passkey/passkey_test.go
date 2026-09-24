@@ -9,6 +9,7 @@ import (
 
 	"github.com/ajent-social/go/passkey"
 	"github.com/ajent-social/go/passkey/memory"
+	wa "github.com/go-webauthn/webauthn/webauthn"
 )
 
 func TestNewRequiresOrigin(t *testing.T) {
@@ -62,6 +63,28 @@ func TestAddRequiresExistingCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = svc.BeginRegistration(ctx, passkey.Subject{ID: "user-1", Name: "Ada"}, true)
+	if !errors.Is(err, passkey.ErrDenied) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestRegisterDeniedWhenCredentialsExist(t *testing.T) {
+	ctx := context.Background()
+	store := memory.New()
+	svc, err := passkey.New(passkey.Config{
+		RPDisplayName: "Test",
+		Origin:        "http://localhost:8080",
+	}, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PutCredential(ctx, passkey.CredentialRecord{
+		SubjectID: "user-1",
+		Credential: wa.Credential{ID: []byte("cred")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = svc.BeginRegistration(ctx, passkey.Subject{ID: "user-1", Name: "Ada"}, false)
 	if !errors.Is(err, passkey.ErrDenied) {
 		t.Fatalf("got %v", err)
 	}

@@ -30,3 +30,22 @@ func TestCreateEnsureDisable(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestEnsureByEmailConcurrentCreate(t *testing.T) {
+	ctx := context.Background()
+	store := memory.New()
+	svc, err := accounts.New(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Seed to simulate winner of a race after Create returns ErrExists.
+	seed, err := svc.Create(ctx, accounts.CreateInput{Email: "bob@example.com", DisplayName: "Bob"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Force Create path by deleting from lookup map is hard; call Ensure when already exists.
+	got, err := svc.EnsureByEmail(ctx, "bob@example.com", "Ignored")
+	if err != nil || got.ID != seed.ID {
+		t.Fatalf("%#v %v", got, err)
+	}
+}

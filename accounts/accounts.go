@@ -140,7 +140,15 @@ func (s *Service) EnsureByEmail(ctx context.Context, email, displayName string) 
 	if displayName == "" {
 		displayName = strings.Split(e, "@")[0]
 	}
-	return s.Create(ctx, CreateInput{Email: e, DisplayName: displayName})
+	a, err = s.Create(ctx, CreateInput{Email: e, DisplayName: displayName})
+	if err == nil {
+		return a, nil
+	}
+	if !errors.Is(err, ErrExists) {
+		return Account{}, err
+	}
+	// Concurrent creator won the same email; return the durable row.
+	return s.store.LookupByEmail(ctx, e)
 }
 
 // Disable marks an account disabled (fail closed for auth).

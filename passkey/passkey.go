@@ -174,14 +174,17 @@ func (s *Service) BeginRegistration(ctx context.Context, subject Subject, add bo
 	if strings.TrimSpace(subject.ID) == "" || strings.TrimSpace(subject.Name) == "" {
 		return BeginResult{}, ErrInvalid
 	}
+	n, err := s.store.CountCredentials(ctx, subject.ID)
+	if err != nil {
+		return BeginResult{}, err
+	}
 	if add {
-		n, err := s.store.CountCredentials(ctx, subject.ID)
-		if err != nil {
-			return BeginResult{}, err
-		}
 		if n == 0 {
 			return BeginResult{}, ErrDenied
 		}
+	} else if n > 0 {
+		// New-subject registration must not attach a passkey to an existing subject.
+		return BeginResult{}, ErrDenied
 	}
 	user := subject
 	creds, err := s.store.ListCredentials(ctx, subject.ID)
@@ -273,6 +276,9 @@ func (s *Service) Finish(ctx context.Context, handle string, r *http.Request) (F
 	case KindRegister, KindAdd:
 		sub := Subject{ID: cer.SubjectID, Name: cer.Name, DisplayName: cer.Name}
 		creds, _ := s.store.ListCredentials(ctx, sub.ID)
+		if cer.Kind == KindRegister && len(creds) > 0 {
+			return FinishResult{}, ErrDenied
+		}
 		var keys []wa.Credential
 		for _, c := range creds {
 			keys = append(keys, c.Credential)
@@ -282,14 +288,8 @@ func (s *Service) Finish(ctx context.Context, handle string, r *http.Request) (F
 			return FinishResult{}, ErrDenied
 		}
 		rec := CredentialRecord{SubjectID: sub.ID, Credential: *cred, CreatedAt: s.now().UTC()}
-		if cer.Kind == KindAdd {
-			if err := s.store.PutCredential(ctx, rec); err != nil {
-				return FinishResult{}, err
-			}
-		} else {
-			if err := s.store.PutCredential(ctx, rec); err != nil {
-				return FinishResult{}, err
-			}
+		if err := s.store.PutCredential(ctx, rec); err != nil {
+			return FinishResult{}, err
 		}
 		return FinishResult{Subject: sub, Credential: *cred, Kind: cer.Kind}, nil
 
