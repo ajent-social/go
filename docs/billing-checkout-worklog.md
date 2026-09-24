@@ -11,3 +11,12 @@ provider failure → unknown). No live Stripe keys. No private source copied.
 Next: Stripe SDK adapter, SQL store, Ferro hosted consumer in test mode
 (login → checkout → webhook → access; redirect alone denied). REAL_CONSUMER
 and HUMAN_REVIEW remain NOT_RUN.
+
+## 2026-09-24 — recover lease fix
+
+`RecoverAttempt` now claims a fresh lease before commit so it cannot overwrite
+another worker's terminal row on a stale epoch; stale non-terminal outcomes
+return `ErrBusy`. `StartCheckout` derives a bounded EnsureCustomer attempt ID
+so max-length checkout attempts no longer fail validation. Tests cover long
+attempt IDs and stale-lease protection.
+
