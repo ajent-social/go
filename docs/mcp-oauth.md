@@ -1,6 +1,7 @@
 # MCP OAuth authorization server contract (`mcpoauth`)
 
-Capability: `identity.mcp-oauth`. Status: CANDIDATE pending maintainer review.
+Capability: `identity.mcp-oauth`. Status: CANDIDATE. The owner approved this candidate integration on 2026-09-24;
+independent audit and status promotion remain separate.
 This is a proposed extraction for one immediate consumer, not a released or
 audited security API. Read [provenance](provenance-mcpoauth.md) and the
 [worklog](mcpoauth-worklog.md).

@@ -38,11 +38,16 @@ the `CreateGrant`/`RotateRefresh`/`RevokeGrant` store operations, the
 adapter code and tests. The restricted source has no refresh tokens. This
 extension was written in this repository against RFC 6749 §6 and §10.4,
 RFC 6819 §5.2.2.3 and the OAuth 2.1 draft's refresh token rotation
-requirements, and has received automated source review and regression testing, not an independent security audit or human maintainer approval.
+requirements, and has received automated source review and regression testing, not an independent security audit. The owner subsequently approved this candidate integration on 2026-09-24.
 
-Consumer evidence: one restricted consumer integration is in progress by the
-maintainer. It is not merged, deployed or independently verifiable, and does
-not establish public adoption. No independent consumer counts exist.
+Consumer evidence: [Serenity PR #271](https://github.com/sirerun/serenity/pull/271)
+merged the pinned library integration after public CI and explicit owner
+approval. Native Claude Code and Codex each completed OAuth login and a real
+recall against a local synthetic fixture. The owner-authorized deployment is
+[v0.1.9-hosted-candidate](https://github.com/sirerun/serenity/releases/tag/v0.1.9-hosted-candidate).
+Its live OAuth sign-in, consent, refresh, MCP tool discovery and revocation
+checks passed, as reported by the implementing agent. This is one consumer,
+not broad adoption, cloud-client qualification or an independent audit.
 
 Alternatives evaluated: the official MCP Go SDK (`auth`, `oauthex`) covers
 resource-server verification and client discovery but not a product
