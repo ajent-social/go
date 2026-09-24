@@ -196,12 +196,12 @@ func OriginAllowed(requestOrigin string, patterns []string) bool {
 }
 
 func originMatchesWildcard(reqOrigin, pat string) bool {
-	// pat like https://*.example.com
+	// pat like https://*.example.com or https://*.example.com:8443
 	u, err := url.Parse(pat)
 	if err != nil {
 		return false
 	}
-	host := u.Host // *.example.com
+	host := u.Hostname()
 	if !strings.HasPrefix(host, "*.") {
 		return false
 	}
@@ -210,12 +210,29 @@ func originMatchesWildcard(reqOrigin, pat string) bool {
 	if err != nil || ru.Scheme != u.Scheme {
 		return false
 	}
+	if effectivePort(ru) != effectivePort(u) {
+		return false
+	}
 	h := ru.Hostname()
 	if !strings.HasSuffix(h, suffix) {
 		return false
 	}
 	prefix := strings.TrimSuffix(h, suffix)
 	return prefix != "" && !strings.Contains(prefix, ".")
+}
+
+func effectivePort(u *url.URL) string {
+	if p := u.Port(); p != "" {
+		return p
+	}
+	switch u.Scheme {
+	case "https":
+		return "443"
+	case "http":
+		return "80"
+	default:
+		return ""
+	}
 }
 
 func validateOriginPattern(p string) error {
