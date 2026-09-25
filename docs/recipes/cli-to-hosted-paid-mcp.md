@@ -37,12 +37,22 @@ The tool/engine stays product code. AMSL owns repeated coordination seams.
 | 6 | Official MCP SDK | Protocol server — not AMSL |
 | 7 | `billing/checkout` + `stripeadapt` + SQL | EnsureCustomer / StartCheckout / RecoverAttempt |
 | 8 | `billing/subscription` | AcceptVerifiedEvent after Stripe signature verify |
+| 8b | `billing/stripeverify` | ConstructEvent → VerifiedEvent |
 | 9 | `billing/portal` | Self-serve invoices / payment method / cancel |
+<<<<<<< HEAD
 | 10 | Product entitlement | Projection status → allow/deny; **redirect ≠ paid** |
 | 11 | `tenant` + Runtime | Request → Provision → Ready; Runtime = Pulumi apply |
 | 12 | `tenantdnstls` + `containerdeploy` | `*.product.cloud` cert + digest-pinned Fargate |
 | 13 | `webhookegress` | Signed outbound product events |
 | 14 | `delivery.go-validation` | Pin reusable CI workflow |
+=======
+| 10 | `billing/entitlement` | RequireAccount / RequireStatus; **redirect ≠ paid** |
+| 10b | `usage` | Optional step/quota meters with explicit limits |
+| 10c | `sealedvault` | Caller-sealed connection secrets (ciphertext only) |
+| 11 | `tenant` + `sqlstore` + Runtime | Request → Provision → Ready; Runtime = Pulumi apply |
+| 12 | `tenantdnstls` + `ecscluster` + `containerdeploy` | Cert + cluster/roles + Fargate (+ TargetGroupARN) |
+| 13 | `delivery.go-validation` | Pin reusable CI workflow |
+>>>>>>> 606fe76 (Close hosted-path library gaps for multi-tenant paid compose.)
 
 ## Auth notes (from ajent-social passkey patterns)
 
