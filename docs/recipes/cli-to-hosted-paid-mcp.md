@@ -26,10 +26,14 @@ The tool/engine stays product code. AMSL owns repeated coordination seams.
 | 2 | `accounts` + `sqlstore` | Create / EnsureByEmail / Disable / RequireActive |
 | 3a | `passkey` + `sqlstore` + go-webauthn | Discoverable UV passkeys; RP from configured origin |
 | 3b | `magiclink` + `sqlstore` + Mailer | Email challenge; you send mail and mint session after Consume |
-| 3c | `oidc` + memory/store | Social OIDC (Google/Apple…); link subject → account; mint session after Accept |
-| 3d | Sessions | REFERENCE_EXISTING (`scs` or hashed cookie like product sessions) |
-| 4 | `servicecred` + `sqlstore` | `Owner` = `accounts.Account.ID` |
-| 5 | `mcpoauth` + `sqlstore` | Consent after browser auth; Verify on MCP requests |
+| 3c | `oidc` + `oidc/github`/`apple`/`microsoft` | Social login; link subject → account; mint session after Accept |
+| 3d | `passwordreset` | Consume-once reset tokens; hash password with established lib |
+| 3e | Sessions | REFERENCE_EXISTING (`scs` or hashed cookie like product sessions) |
+| 3f | `deviceflow` | CLI device-code login against configured AS |
+| 4 | `servicecred` + `sqlstore` | `Owner` = `accounts.Account.ID` (backend secrets) |
+| 4b | `publishablekey` + `sqlstore` | Embeddable public keys + origin allowlist |
+| 5 | `mcpoauth` + `sqlstore` | Consent after browser auth; Verify on MCP requests (product is AS) |
+| 5b | `mcpclientoauth` | Connect *to* remote MCP servers (product is client; sealed tokens) |
 | 6 | Official MCP SDK | Protocol server — not AMSL |
 | 7 | `billing/checkout` + `stripeadapt` + SQL | EnsureCustomer / StartCheckout / RecoverAttempt |
 | 8 | `billing/subscription` | AcceptVerifiedEvent after Stripe signature verify |
@@ -37,7 +41,8 @@ The tool/engine stays product code. AMSL owns repeated coordination seams.
 | 10 | Product entitlement | Projection status → allow/deny; **redirect ≠ paid** |
 | 11 | `tenant` + Runtime | Request → Provision → Ready; Runtime = Pulumi apply |
 | 12 | `tenantdnstls` + `containerdeploy` | `*.product.cloud` cert + digest-pinned Fargate |
-| 13 | `delivery.go-validation` | Pin reusable CI workflow |
+| 13 | `webhookegress` | Signed outbound product events |
+| 14 | `delivery.go-validation` | Pin reusable CI workflow |
 
 ## Auth notes (from ajent-social passkey patterns)
 

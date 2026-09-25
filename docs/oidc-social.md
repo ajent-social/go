@@ -7,5 +7,14 @@ consume-once; redirect URIs must be configured absolutes (https or loopback
 http). Link IdP subjects to local accounts via bindings. Sessions remain
 REFERENCE_EXISTING (scs).
 
-GitHub (non-OIDC OAuth) is not covered by this package — prefer Google/Apple
-OIDC issuers or a separate adapter later.
+## Adapters
+
+- `oidc/github` — non-OIDC OAuth 2.0 (user + emails API) producing the same
+  `Identity` shape and sharing `oidc.Store`.
+- `oidc/apple` — Apple client-secret JWT (ES256) helper plus issuer preset for
+  `oidc.New`.
+- `oidc/microsoft` — Microsoft identity platform issuer/scopes preset for
+  `oidc.New`.
+
+GitHub is not covered by the core OIDC path (no standard ID token); use
+`oidc/github`.
