@@ -49,7 +49,9 @@ cookies remain REFERENCE_EXISTING (e.g. SCS).
 Additional identity/delivery CANDIDATEs: `mcpclientoauth` (product as OAuth
 **client** to remote MCP servers; sealed token blobs), `publishablekey`
 (embeddable public keys with origin allowlists; complements `servicecred`),
-and `webhookegress` (HMAC-signed outbound webhooks).
+`webhookegress` (HMAC-signed outbound webhooks), and `webhookingress`
+(verify inbound AMSL `X-AMSL-Signature` headers; provider webhooks stay with
+their SDKs / `billing/stripeverify`).
 
 Hosted instance lifecycle CANDIDATE: `tenant` coordinates slug → provision →
 ready → upgrade/destroy around a product `Runtime` (typically Pulumi
