@@ -13,8 +13,9 @@ Signature header: `X-AMSL-Signature: t=<unix>,v1=<hex hmac>` over
 
 ## Non-goals
 
-Inbound provider webhook verification (use the provider SDK), product event
-taxonomies, exactly-once delivery guarantees.
+Inbound provider webhook verification (use the provider SDK or
+`billing/stripeverify`), product event taxonomies, exactly-once delivery
+guarantees. For inbound AMSL-signed webhooks use `webhookingress`.
 
 ## Provenance
 
