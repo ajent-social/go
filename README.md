@@ -33,17 +33,18 @@ A fourth CANDIDATE is `billing/subscription` for a durable verified-event
 inbox and local subscription projection after SDK signature verification. See
 [billing subscription](docs/billing-subscription.md). Grace and `past_due`
 policy stay with the application. Checkout companions include
-`billing/checkout/stripeadapt`, `billing/checkout/sqlstore`, and
-`billing/portal` (Stripe Customer Portal for self-serve billing management).
+`billing/checkout/stripeadapt`, `billing/checkout/sqlstore`,
+`billing/portal` (Stripe Customer Portal), `billing/stripeverify` (webhook
+signature → VerifiedEvent), and `billing/entitlement` (projection status gate).
 
 Human auth CANDIDATEs for the hosted path: `accounts`, `passkey` (go-webauthn
 ceremonies; patterns informed by ajent-social human accounts, no private source
 copied), `magiclink` (email challenge tokens), `oidc` (OIDC authorization-code
 social login around go-oidc) with `oidc/github`, `oidc/apple`, and
 `oidc/microsoft` adapters, `passwordreset`, and `deviceflow` (RFC 8628 CLI
-login). Each of accounts/passkey/magiclink has a multi-host `sqlstore` adapter
-(PostgreSQL-compatible, including SereneDB). Browser session cookies remain
-REFERENCE_EXISTING (e.g. SCS).
+login). Each of accounts/passkey/magiclink/oidc/tenant has a multi-host
+`sqlstore` adapter (PostgreSQL-compatible, including SereneDB). Browser session
+cookies remain REFERENCE_EXISTING (e.g. SCS).
 
 Additional identity/delivery CANDIDATEs: `mcpclientoauth` (product as OAuth
 **client** to remote MCP servers; sealed token blobs), `publishablekey`
@@ -52,7 +53,10 @@ and `webhookegress` (HMAC-signed outbound webhooks).
 
 Hosted instance lifecycle CANDIDATE: `tenant` coordinates slug → provision →
 ready → upgrade/destroy around a product `Runtime` (typically Pulumi
-`containerdeploy` + `tenantdnstls`). Entitlement checks stay with the app.
+`containerdeploy` + `tenantdnstls`). Call `billing/entitlement` before Request.
+
+Additional CANDIDATEs: `usage` (bounded meters), `sealedvault` (caller-sealed
+ciphertext only).
 
 Composition recipe (CLI → hosted multi-tenant paid MCP with user/billing
 management and passkey/magic/OIDC auth):
