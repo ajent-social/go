@@ -82,7 +82,7 @@ secrets, and output is returned unredacted. Keep host tool-approval settings.
 ## Generated layout
 
 `amsl-agent-plugin generate --spec FILE --out DIR` writes three independent
-folders:
+host folders and one local Codex marketplace catalog:
 
 | Host | Manifest | Notes |
 | --- | --- | --- |
@@ -94,7 +94,24 @@ Every folder also has `skills/<name>/SKILL.md` (same body on every host;
 `disable-model-invocation: true` on Claude Code and Cursor), `.mcp.json`
 running `amsl-agent-plugin serve --spec-json <canonical spec>`, the bundled
 canonical spec, a README and `amsl-provenance.json` (spec SHA-256 and every
-file's SHA-256). No hooks, installers, binaries, marketplaces or global config.
+file's SHA-256). No hooks, installers, binaries or global config.
+
+`DIR/.agents/plugins/marketplace.json` makes `DIR` a local Codex marketplace
+source. The marketplace and its single plugin entry are both named after
+`plugin.name`; the entry is `source: {source: "local", path: "./codex"}`,
+`policy: {installation: AVAILABLE, authentication: ON_INSTALL}`, category
+`Developer Tools`. The path is relative to `DIR`, never a URL. The codex
+provenance records the catalog's SHA-256 under `output_root_files`
+(`generator_format` 2). Install, with both `amsl-agent-plugin` and the CLI on
+`PATH`:
+
+```sh
+codex plugin marketplace add DIR
+codex plugin add NAME@NAME
+```
+
+Both commands write the invoking user's Codex configuration and copy the codex
+folder into Codex's plugin cache; re-run `codex plugin add` after regenerating.
 
 Output is a pure function of the spec: no clock, environment or local paths.
 `DIR` must be absent or an empty real directory. Files are staged in a sibling
@@ -117,6 +134,14 @@ declare write scopes.
   `mcpServers: ./.mcp.json`. The portable root `plugin.json` + `mcp.json`
   format was not emitted because its stdio server shape was not verified
   locally.
+- **One local marketplace at the output root.** The OpenAI plugin build guide
+  documents `$ROOT/.agents/plugins/marketplace.json` with `./`-prefixed
+  `source.path` resolved from the marketplace root and requires
+  `policy.installation`, `policy.authentication` and `category` on each entry.
+  Naming the marketplace after the plugin keeps the install selector
+  deterministic (`NAME@NAME`) and derived only from validated spec fields.
+  Claude Code and Cursor marketplace files are not generated; distribution for
+  those hosts stays with the repository that ships the folders.
 - **Low-level `Server.AddTool`.** The typed `mcp.AddTool` infers schemas from
   Go types; tools here are data-defined, so the server supplies the schema and
   validates arguments itself.
@@ -132,11 +157,13 @@ declare write scopes.
 temp directories. Covered: 8 malformed-JSON and 47 invalid-spec cases; argv
 construction with shell metacharacters, quoting and leading dashes; 21
 invalid-argument cases; deterministic three-host rendering, identical skill
-bodies, inline/bundled spec round-trip, provenance digests, no embedded
+bodies, inline/bundled spec round-trip, provenance digests, the marketplace
+entry resolving to the codex manifest of the same name, no embedded
 environment values or local paths; generate into absent/empty directories,
 refusal of non-empty/hidden-file/file/symlink targets without modification,
 invalid spec writes nothing, eight concurrent generators with one winner;
-check detecting changed/missing/extra files, extra directories, symlinked
+check detecting changed/missing/extra files (including a redirected
+marketplace source), extra directories, symlinked
 files and roots, and spec changes, read-only; subprocess success, non-zero
 exit, unknown tool, missing executable (injected and real `PATH`), relative
 resolution, version mismatch and failing probe; inherited environment and cwd;
@@ -160,9 +187,14 @@ command through its own harness, and exercised the MCP server against its
 real CLI. That evidence is restricted maintainer evidence and cannot be
 verified by readers. It is not independent adoption.
 
-Not verified: installing any generated folder in Codex, Claude Code or Cursor
-and invoking it from the host UI. Generator and MCP tests are packaging and
-protocol checks, not host installation evidence.
+Host qualification completed so far, and what remains, is tracked gate by
+gate in [cli-agent-plugins-plan.md](cli-agent-plugins-plan.md). In short:
+Codex CLI 0.157.1 registered a generated output root as a marketplace,
+installed and enabled the plugin into an isolated Codex home with outbound
+network denied, and listed its MCP server; `claude plugin validate` accepted
+the Claude Code folder. No generated plugin has been invoked from a live host
+session or UI. Generator and MCP tests are packaging and protocol checks, not
+host usage evidence.
 
 ## Dependencies
 

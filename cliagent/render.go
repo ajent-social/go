@@ -24,9 +24,14 @@ var Hosts = []string{HostCodex, HostClaudeCode, HostCursor}
 // installed on PATH alongside the described CLI.
 const ServerCommand = "amsl-agent-plugin"
 
+// CodexMarketplacePath is the local Codex marketplace catalog, relative to the
+// output root. Its single entry points at the codex host folder, so the output
+// root is a marketplace source for `codex plugin marketplace add`.
+const CodexMarketplacePath = ".agents/plugins/marketplace.json"
+
 const (
 	generatorID     = "github.com/ajent-social/go/cliagent"
-	generatorFormat = 1
+	generatorFormat = 2
 	bundledSpecName = "amsl-agent-plugin.spec.json"
 	provenanceName  = "amsl-provenance.json"
 )
@@ -65,7 +70,11 @@ func Render(s *Spec) ([]File, error) {
 		return nil, err
 	}
 	body := skillBody(s)
-	var out []File
+	marketplace, err := codexMarketplace(s)
+	if err != nil {
+		return nil, err
+	}
+	out := []File{{CodexMarketplacePath, marketplace}}
 	for _, host := range Hosts {
 		manifestPath, manifest, err := hostManifest(s, host)
 		if err != nil {
@@ -81,7 +90,11 @@ func Render(s *Spec) ([]File, error) {
 		if host == HostCodex {
 			files = append(files, File{"skills/" + s.Skill.Name + "/agents/openai.yaml", codexSkillPolicy(s)})
 		}
-		prov, err := provenance(s, host, specDigest, files)
+		var rootFiles []File
+		if host == HostCodex {
+			rootFiles = []File{{CodexMarketplacePath, marketplace}}
+		}
+		prov, err := provenance(s, host, specDigest, files, rootFiles)
 		if err != nil {
 			return nil, err
 		}
@@ -146,6 +159,22 @@ func hostManifest(s *Spec, host string) (string, []byte, error) {
 	}
 	data, err := marshalJSON(m)
 	return path, data, err
+}
+
+// codexMarketplace lists the codex folder as the only plugin of a local
+// marketplace named after the plugin. Source paths must be ./-prefixed and
+// resolve from the marketplace root (the output root), never a remote URL.
+func codexMarketplace(s *Spec) ([]byte, error) {
+	return marshalJSON(orderedObject{
+		{"name", s.Plugin.Name},
+		{"interface", orderedObject{{"displayName", displayName(s)}}},
+		{"plugins", []orderedObject{{
+			{"name", s.Plugin.Name},
+			{"source", orderedObject{{"source", "local"}, {"path", "./" + HostCodex}}},
+			{"policy", orderedObject{{"installation", "AVAILABLE"}, {"authentication", "ON_INSTALL"}}},
+			{"category", "Developer Tools"},
+		}}},
+	})
 }
 
 func hasWritingTool(s *Spec) bool {
@@ -302,9 +331,11 @@ func installText(s *Spec, host string) string {
 	n := s.Plugin.Name
 	switch host {
 	case HostCodex:
-		return "Codex installs plugins from marketplaces (`codex plugin marketplace add SOURCE`, then `codex plugin add " + n + "@MARKETPLACE`). " +
-			"This folder uses the `.codex-plugin/plugin.json` layout, which declares `skills` and `mcpServers: ./.mcp.json`. " +
-			"It ships no marketplace file; the repository that distributes it must list this folder in its marketplace.\n"
+		return "The generated output root (the parent of this folder) is a local Codex marketplace named `" + n + "`: `" + CodexMarketplacePath + "` lists this folder as `./" + HostCodex + "`. " +
+			"From a trusted checkout, register the output root and install the plugin:\n\n" +
+			"```sh\ncodex plugin marketplace add path/to/generated\ncodex plugin add " + n + "@" + n + "\n```\n\n" +
+			"Both commands change the Codex configuration of the user running them. Codex installs a copy into its plugin cache, so re-run `codex plugin add` after regenerating. " +
+			"This folder uses the `.codex-plugin/plugin.json` layout, which declares `skills` and `mcpServers: ./.mcp.json`.\n"
 	case HostClaudeCode:
 		return "For local use, start Claude Code with `claude --plugin-dir path/to/claude-code`. " +
 			"For distribution, list this folder in a Claude Code plugin marketplace and run `claude plugin install " + n + "@MARKETPLACE`. " +
@@ -315,12 +346,14 @@ func installText(s *Spec, host string) string {
 	}
 }
 
-func provenance(s *Spec, host, specDigest string, files []File) ([]byte, error) {
+// provenance records digests of the host folder's files (relative to the host
+// folder) and of any output-root files that describe it (relative to the root).
+func provenance(s *Spec, host, specDigest string, files, rootFiles []File) ([]byte, error) {
 	digests := map[string]string{}
 	for _, f := range files {
 		digests[f.Path] = sha256Hex(f.Data)
 	}
-	return marshalJSON(orderedObject{
+	o := orderedObject{
 		{"schema_version", 1},
 		{"generator", generatorID},
 		{"generator_format", generatorFormat},
@@ -328,7 +361,15 @@ func provenance(s *Spec, host, specDigest string, files []File) ([]byte, error) 
 		{"plugin", orderedObject{{"name", s.Plugin.Name}, {"version", s.Plugin.Version}}},
 		{"spec_sha256", specDigest},
 		{"files", digests},
-	})
+	}
+	if len(rootFiles) > 0 {
+		root := map[string]string{}
+		for _, f := range rootFiles {
+			root[f.Path] = sha256Hex(f.Data)
+		}
+		o = append(o, kv{"output_root_files", root})
+	}
+	return marshalJSON(o)
 }
 
 // yamlString quotes s as a YAML double-quoted scalar. JSON string syntax is a

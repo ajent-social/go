@@ -212,6 +212,11 @@ func TestCheckDetectsDriftReadOnly(t *testing.T) {
 			b, _ := os.ReadFile(p)
 			writeFile(t, p, strings.Replace(string(b), "fakecli", "evilcli", 1))
 		}, "changed: cursor/.mcp.json"},
+		{"redirected marketplace source", func(t *testing.T, out string) {
+			p := filepath.Join(out, ".agents", "plugins", "marketplace.json")
+			b, _ := os.ReadFile(p)
+			writeFile(t, p, strings.Replace(string(b), `"./codex"`, `"./cursor"`, 1))
+		}, "changed: .agents/plugins/marketplace.json"},
 		{"missing file", func(t *testing.T, out string) {
 			if err := os.Remove(filepath.Join(out, "claude-code", "skills", "fake-cli", "SKILL.md")); err != nil {
 				t.Fatal(err)

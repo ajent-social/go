@@ -2,6 +2,7 @@ package cliagent
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"reflect"
 	"strings"
@@ -39,6 +40,7 @@ func TestRenderIsDeterministicAcrossThreeHosts(t *testing.T) {
 		paths = append(paths, f.Path)
 	}
 	want := []string{
+		".agents/plugins/marketplace.json",
 		"claude-code/.claude-plugin/plugin.json",
 		"claude-code/.mcp.json",
 		"claude-code/README.md",
@@ -119,12 +121,20 @@ func TestRenderHostManifestsAndSharedWorkflow(t *testing.T) {
 			Plugin          map[string]string `json:"plugin"`
 			SpecSHA256      string            `json:"spec_sha256"`
 			Files           map[string]string `json:"files"`
+			OutputRootFiles map[string]string `json:"output_root_files"`
 		}
 		if err := decodeStrict(m[host+"/amsl-provenance.json"], &prov); err != nil {
 			t.Fatalf("%s provenance: %v", host, err)
 		}
-		if prov.Host != host || prov.SpecSHA256 != sha256Hex(canonical) {
+		if prov.Host != host || prov.SpecSHA256 != sha256Hex(canonical) || prov.GeneratorFormat != 2 {
 			t.Fatalf("%s provenance identity = %+v", host, prov)
+		}
+		wantRoot := map[string]string(nil)
+		if host == HostCodex {
+			wantRoot = map[string]string{CodexMarketplacePath: sha256Hex(m[CodexMarketplacePath])}
+		}
+		if !reflect.DeepEqual(prov.OutputRootFiles, wantRoot) {
+			t.Fatalf("%s provenance output_root_files = %v, want %v", host, prov.OutputRootFiles, wantRoot)
 		}
 		for path, data := range m {
 			rel, ok := strings.CutPrefix(path, host+"/")
@@ -163,6 +173,9 @@ func TestRenderHostManifestsAndSharedWorkflow(t *testing.T) {
 	if !bytes.Contains(m["codex/skills/fake-cli/agents/openai.yaml"], []byte("allow_implicit_invocation: false")) {
 		t.Fatal("codex skill policy must disable implicit invocation")
 	}
+	if !bytes.Contains(m["codex/README.md"], []byte("codex plugin marketplace add path/to/generated\ncodex plugin add fake-cli@fake-cli\n")) {
+		t.Fatal("codex README must document the marketplace install commands")
+	}
 	var claude map[string]any
 	if err := decodeStrict(m["claude-code/.claude-plugin/plugin.json"], &claude); err != nil {
 		t.Fatal(err)
@@ -176,6 +189,47 @@ func TestRenderHostManifestsAndSharedWorkflow(t *testing.T) {
 	}
 	if cursor["skills"] != "./skills/" || cursor["mcpServers"] != "./.mcp.json" || cursor["displayName"] != "Fake CLI" {
 		t.Fatalf("cursor manifest = %v", cursor)
+	}
+}
+
+func TestRenderCodexMarketplaceListsLocalCodexFolder(t *testing.T) {
+	t.Parallel()
+	m := renderMap(t, testSpec())
+	type entry struct {
+		Name   string `json:"name"`
+		Source struct {
+			Source string `json:"source"`
+			Path   string `json:"path"`
+		} `json:"source"`
+		Policy struct {
+			Installation   string `json:"installation"`
+			Authentication string `json:"authentication"`
+		} `json:"policy"`
+		Category string `json:"category"`
+	}
+	var mk struct {
+		Name      string `json:"name"`
+		Interface struct {
+			DisplayName string `json:"displayName"`
+		} `json:"interface"`
+		Plugins []entry `json:"plugins"`
+	}
+	if err := decodeStrict(m[CodexMarketplacePath], &mk); err != nil {
+		t.Fatal(err)
+	}
+	if mk.Name != "fake-cli" || mk.Interface.DisplayName != "Fake CLI" || len(mk.Plugins) != 1 {
+		t.Fatalf("marketplace = %+v", mk)
+	}
+	p := mk.Plugins[0]
+	if p.Name != "fake-cli" || p.Source.Source != "local" || p.Source.Path != "./codex" ||
+		p.Policy.Installation != "AVAILABLE" || p.Policy.Authentication != "ON_INSTALL" || p.Category != "Developer Tools" {
+		t.Fatalf("marketplace entry = %+v", p)
+	}
+	var codex struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(m[strings.TrimPrefix(p.Source.Path, "./")+"/.codex-plugin/plugin.json"], &codex); err != nil || codex.Name != p.Name {
+		t.Fatalf("marketplace source does not resolve to the codex manifest named %q: %v", p.Name, err)
 	}
 }
 

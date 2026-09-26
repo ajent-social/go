@@ -88,7 +88,8 @@ func TestGenerateCheckFilesCommands(t *testing.T) {
 		t.Fatalf("check exit %d: %s %s", code, stdout, stderr)
 	}
 	code, stdout, _ := runCLI("files", "--spec", specPath, "--out", "plugins/generated")
-	if code != 0 || !strings.Contains(stdout, "plugins/generated/codex/.codex-plugin/plugin.json\n") || strings.Count(stdout, "\n") != 19 {
+	if code != 0 || !strings.Contains(stdout, "plugins/generated/codex/.codex-plugin/plugin.json\n") ||
+		!strings.Contains(stdout, "plugins/generated/.agents/plugins/marketplace.json\n") || strings.Count(stdout, "\n") != 20 {
 		t.Fatalf("files exit %d:\n%s", code, stdout)
 	}
 	if code, _, stderr := runCLI("generate", "--spec", specPath, "--out", out); code != 1 || !strings.Contains(stderr, "absent or empty") {
