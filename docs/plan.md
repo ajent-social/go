@@ -27,3 +27,10 @@ Merged: go#4 (sqlstore), capabilities#5 (catalog evidence), zerfoo#1014
 (public consumer). Adopted `delivery.go-validation` reusable workflow from
 `ajent-social/workflows@2377e766f704dfe984a1e589933b91f2bc3c50a1` for
 credential-contracts; product-specific boltstore matrix stays local.
+
+## Identity composition qualification
+
+The [identity composition plan](identity-composition-plan.md) tracks proposed
+qualification of MCP issuer isolation, transactional policy checks, user-created
+service credentials and lifecycle composition. Existing contracts remain in force;
+this entry does not claim implementation, adoption or status promotion.
