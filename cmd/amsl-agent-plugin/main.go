@@ -33,8 +33,8 @@ const usage = `usage:
   amsl-agent-plugin serve    (--spec FILE | --spec-json JSON) [--workspace DIR]
 
 generate writes Codex, Claude Code and Cursor plugin folders into DIR, which
-must be absent or empty. check compares DIR with the spec read-only and exits 1
-on drift. files prints the relative paths generate writes. serve runs the
+must be absent or empty and must not be the current working directory.
+check compares DIR with the spec read-only and exits 1 on drift. files prints the relative paths generate writes. serve runs the
 declared tools as a stdio MCP server (stdout is protocol only).
 `
 

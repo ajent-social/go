@@ -56,7 +56,7 @@ restricted and unverified by readers unless its artifacts are published.
 | G9 Claude Code live session use | remaining |
 | G10 Cursor load and use | remaining |
 | G11 Full-module vet and race tests | complete (local qualification and PR CI with PostgreSQL) |
-| G12 Maintainer review of source and consumer generated output | remaining |
+| G12 Maintainer review of source and consumer generated output | complete (coordinator inspection, headless review and regression corrections) |
 | G13 Catalog promotion | not started; needs independent consumer evidence |
 
 ### G5: stdio probe

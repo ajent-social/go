@@ -49,3 +49,54 @@ func TestSpecRejectsOversizedInlineArgument(t *testing.T) {
 		t.Fatalf("oversized plugin rendered: %v", err)
 	}
 }
+
+func TestGeneratePreservesCurrentDirectory(t *testing.T) {
+	for _, spelling := range []string{"dot", "absolute", "symlinked parent"} {
+		t.Run(spelling, func(t *testing.T) {
+			parent := t.TempDir()
+			cwd := filepath.Join(parent, "output")
+			if err := os.Mkdir(cwd, 0700); err != nil {
+				t.Fatal(err)
+			}
+			out := "."
+			if spelling == "absolute" {
+				out = cwd
+			}
+			if spelling == "symlinked parent" {
+				alias := filepath.Join(t.TempDir(), "alias")
+				if err := os.Symlink(parent, alias); err != nil {
+					t.Skipf("symlink unavailable: %v", err)
+				}
+				out = filepath.Join(alias, "output")
+			}
+			t.Chdir(cwd)
+			if err := Generate(testSpec(), out); !errors.Is(err, ErrOutputExists) {
+				t.Fatalf("current working directory must be refused: %v", err)
+			}
+			if _, err := os.Getwd(); err != nil {
+				t.Fatalf("working directory detached: %v", err)
+			}
+			entries, err := os.ReadDir(".")
+			if err != nil || len(entries) != 0 {
+				t.Fatalf("working directory modified: %v, %v", entries, err)
+			}
+		})
+	}
+}
+
+func TestCheckRejectsSymlinkRootSpellings(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "generated")
+	if err := Generate(testSpec(), out); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(out, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	for _, root := range []string{link, link + string(os.PathSeparator), link + string(os.PathSeparator) + "."} {
+		if err := Check(testSpec(), root); !errors.Is(err, ErrDrift) {
+			t.Errorf("symlink root %q accepted: %v", root, err)
+		}
+	}
+}

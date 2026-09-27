@@ -116,7 +116,10 @@ Both commands write the invoking user's Codex configuration and copy the codex
 folder into Codex's plugin cache; re-run `codex plugin add` after regenerating.
 
 Output is a pure function of the spec: no clock, environment or local paths.
-`DIR` must be absent or an empty real directory. Files are staged in a sibling
+`DIR` must be absent or an empty real directory, and must not be the process
+working directory (including filesystem aliases). Choose a child or sibling
+output directory instead of `--out .`; replacing the working directory would
+detach its existing inode. Files are staged in a sibling
 temp directory and moved with one rename; an empty `DIR` is removed with rmdir
 first (macOS refuses to rename onto it). Existing content, symlinks and files
 are refused and left untouched, and concurrent generators produce exactly one

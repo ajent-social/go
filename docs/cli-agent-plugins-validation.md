@@ -50,3 +50,19 @@ tests with PostgreSQL enabled, the storage cross-compilation matrix and the
 Windows unsupported-platform test successfully. The non-PostgreSQL alternative
 job is intentionally skipped when the PostgreSQL job runs. This supersedes the
 initial local-only CI limitation above; live host agent/UI use remains unverified.
+
+## Headless review
+
+A read-only headless Codex review completed after the Cursor review attempt
+returned no result within its bound. It identified two further output-path
+edge cases. Regression tests reproduced both before correction:
+
+- current-directory output aliases are now refused explicitly, preserving the
+  caller's working-directory inode; filesystem identity checks also cover
+  symlinked-parent aliases;
+- drift checking normalizes the root before `Lstat`, so a trailing slash or
+  `/.` cannot bypass root symlink rejection.
+
+The complete `cliagent` race suite passed after these corrections. The command
+help and guide describe the current-directory exception. These changes retain
+atomic publication into a separate absent or empty directory.

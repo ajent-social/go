@@ -34,7 +34,8 @@ func Paths(s *Spec) ([]string, error) {
 }
 
 // Generate renders s into outDir. outDir must be absent or an empty real
-// directory; nothing existing is overwritten or deleted. Files are staged in a
+// directory other than the process working directory; nothing existing is
+// overwritten or deleted. Files are staged in a
 // sibling temporary directory and moved into place with a single rename, so a
 // failure leaves no partial output and a concurrent writer cannot be clobbered.
 // An existing empty outDir is removed with rmdir (which fails if it gained
@@ -48,9 +49,25 @@ func Generate(s *Spec, outDir string) error {
 	if outDir == "" {
 		return errors.New("cliagent: output directory is required")
 	}
-	outDir = filepath.Clean(outDir)
+	outDir, err = filepath.Abs(outDir)
+	if err != nil {
+		return fmt.Errorf("cliagent: output directory: %w", err)
+	}
 	if err := requireAbsentOrEmpty(outDir); err != nil {
 		return err
+	}
+	// Replacing the current directory would detach the caller's cwd inode.
+	// SameFile also catches paths through symlinked parents and physical aliases.
+	if target, statErr := os.Stat(outDir); statErr == nil {
+		cwd, cwdErr := os.Stat(".")
+		if cwdErr != nil {
+			return fmt.Errorf("cliagent: working directory: %w", cwdErr)
+		}
+		if os.SameFile(target, cwd) {
+			return fmt.Errorf("%w: output must not be the current working directory", ErrOutputExists)
+		}
+	} else if !errors.Is(statErr, fs.ErrNotExist) {
+		return fmt.Errorf("cliagent: output directory: %w", statErr)
 	}
 	parent := filepath.Dir(outDir)
 	pfi, err := os.Stat(parent)
@@ -166,6 +183,15 @@ func Check(s *Spec, outDir string) error {
 	files, err := Render(s)
 	if err != nil {
 		return err
+	}
+	if outDir == "" {
+		return errors.New("cliagent: output directory is required")
+	}
+	// Strip trailing separators and /. before Lstat: otherwise the OS follows
+	// a symlink at the output root instead of inspecting the link itself.
+	outDir, err = filepath.Abs(outDir)
+	if err != nil {
+		return fmt.Errorf("cliagent: output directory: %w", err)
 	}
 	fi, err := os.Lstat(outDir)
 	if err != nil {
