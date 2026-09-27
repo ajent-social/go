@@ -1,0 +1,9 @@
+{{define "title"}}Sign in{{end}}
+{{define "content"}}
+<h1>Sign in</h1>
+<form id="humanauth-magic" method="post" action="{{.Prefix}}/magic">
+<input type="hidden" name="token" value="">
+<button type="submit">Sign in</button>
+</form>
+{{end}}
+{{define "scripts"}}<script src="{{.Prefix}}/magic.js"></script>{{end}}
