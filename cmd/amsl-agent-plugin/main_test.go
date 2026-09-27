@@ -158,7 +158,7 @@ func TestStdioServeProcessSmoke(t *testing.T) {
 	_, args := generatedServerArgv(t, specPath)
 	cmd := exec.Command(os.Args[0], args...)
 	cmd.Dir = t.TempDir()
-	var stderr bytes.Buffer
+	var stderr synchronizedTestBuffer
 	cmd.Stderr = &stderr
 	cmd.Env = append(os.Environ(), beMainEnv+"=1", "PATH="+binDir+":/usr/bin:/bin")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
