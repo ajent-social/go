@@ -55,7 +55,7 @@ restricted and unverified by readers unless its artifacts are published.
 | G8 Codex live session use | remaining |
 | G9 Claude Code live session use | remaining |
 | G10 Cursor load and use | remaining |
-| G11 Full-module vet and race tests | remaining (maintainer, under build lease) |
+| G11 Full-module vet and race tests | complete (local qualification and PR CI with PostgreSQL) |
 | G12 Maintainer review of source and consumer generated output | remaining |
 | G13 Catalog promotion | not started; needs independent consumer evidence |
 

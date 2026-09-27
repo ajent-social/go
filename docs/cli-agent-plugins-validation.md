@@ -26,3 +26,27 @@ Downstream consumer source and raw journals are local maintainer evidence, not
 publicly reproducible adoption evidence from this repository. No interactive
 Codex/Claude Code/Cursor agent invocation or remote CI is claimed. Runtime
 commands require Unix and installed executables; the adapter is not a sandbox.
+
+## Review corrections and PR qualification
+
+Three executable regressions reproduced failures before correction:
+
+- publication could unlink a competing writer's file after its final check;
+- a child exiting zero with inherited output pipes left open could be reported
+  as successful after `exec.ErrWaitDelay`;
+- a validated specification could render an inline JSON argument larger than
+  Linux accepts.
+
+Publication now uses directory-only removal. Results preserve wait errors and
+MCP reports them as tool failures. Validation caps the canonical, escaped
+inline specification at 96 KiB. Four focused regression tests passed under the
+race detector, including a real MCP client/server error assertion. The full
+`cliagent` and command package race suites, package vet and command build also
+passed after these corrections. Generated downstream output remained identical,
+and independent stdio probes of all three host configurations passed again.
+
+[PR #15](https://github.com/ajent-social/go/pull/15) ran full-module vet and race
+tests with PostgreSQL enabled, the storage cross-compilation matrix and the
+Windows unsupported-platform test successfully. The non-PostgreSQL alternative
+job is intentionally skipped when the PostgreSQL job runs. This supersedes the
+initial local-only CI limitation above; live host agent/UI use remains unverified.
