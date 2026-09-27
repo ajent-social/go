@@ -60,6 +60,14 @@ ready → upgrade/destroy around a product `Runtime` (typically Pulumi
 Additional CANDIDATEs: `usage` (bounded meters), `sealedvault` (caller-sealed
 ciphertext only).
 
+Proposed delivery component (not yet a CANDIDATE): `cliagent` with
+`cmd/amsl-agent-plugin` generates Codex, Claude Code and Cursor plugins for an
+existing CLI from a reviewed declarative spec and serves the spec's declared
+commands as a stdio MCP server on the official MCP Go SDK. No capability
+inference, shell or generic command tool. See
+[docs/cli-agent-plugins.md](docs/cli-agent-plugins.md); host installation is
+not yet verified.
+
 Composition recipe (CLI → hosted multi-tenant paid MCP with user/billing
 management and passkey/magic/OIDC auth):
 [docs/recipes/cli-to-hosted-paid-mcp.md](docs/recipes/cli-to-hosted-paid-mcp.md).
