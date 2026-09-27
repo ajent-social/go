@@ -121,6 +121,6 @@ the consumer commit its generated folders.
 ## Known limits
 
 Unix only for tool execution. No array, stdin or environment-variable inputs.
-A CLI that leaves a background process holding stdout makes the call wait for
-its timeout. Tool annotations are hints, not authorization. Output is
+A CLI that exits while a background process holds stdout makes the call wait
+up to the output-collection grace period, then return a `wait_error`. Tool annotations are hints, not authorization. Output is
 returned unredacted.

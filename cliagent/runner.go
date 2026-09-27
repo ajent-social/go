@@ -59,11 +59,13 @@ type Result struct {
 	Truncated bool     `json:"truncated"`
 	TimedOut  bool     `json:"timed_out"`
 	Canceled  bool     `json:"canceled"`
+	// WaitError reports incomplete output collection or another wait failure.
+	WaitError string `json:"wait_error,omitempty"`
 }
 
 // Failed reports whether the invocation did not complete successfully.
 func (r Result) Failed() bool {
-	return r.ExitCode != 0 || r.TimedOut || r.Canceled
+	return r.ExitCode != 0 || r.TimedOut || r.Canceled || r.WaitError != ""
 }
 
 // NewRunner validates s, resolves its executable once through PATH to an
@@ -187,6 +189,9 @@ func (r *Runner) exec(ctx context.Context, argv []string, timeout time.Duration)
 		Stdout:    stdout.String(),
 		Stderr:    stderr.String(),
 		Truncated: budget.truncated(),
+	}
+	if waitErr != nil {
+		res.WaitError = waitErr.Error()
 	}
 	if errors.Is(runCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
 		res.TimedOut = true

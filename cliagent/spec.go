@@ -20,7 +20,10 @@ const SchemaVersion = 1
 // Bounds enforced by [Spec.Validate]. They are deliberately small: a spec is
 // reviewed by a person and embedded inline in host MCP configuration.
 const (
-	MaxSpecBytes       = 256 << 10
+	MaxSpecBytes = 256 << 10
+	// MaxInlineSpecBytes leaves headroom below Linux's 128 KiB per-argument
+	// exec limit. Validate measures canonical JSON, including escaping.
+	MaxInlineSpecBytes = 96 << 10
 	MaxTimeoutSeconds  = 600
 	MaxOutputBytes     = 1 << 20
 	MaxConcurrent      = 16
@@ -270,6 +273,13 @@ func (s *Spec) Validate() error {
 			return invalid("duplicate tool name %q", t.Name)
 		}
 		seen[t.Name] = true
+	}
+	canonical, err := s.Canonical()
+	if err != nil {
+		return invalid("canonical encoding: %v", err)
+	}
+	if len(canonical) > MaxInlineSpecBytes {
+		return invalid("canonical inline spec exceeds %d bytes", MaxInlineSpecBytes)
 	}
 	return nil
 }

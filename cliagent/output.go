@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 )
 
 // ErrOutputExists reports that the output directory is not absent or empty.
@@ -81,8 +82,8 @@ func Generate(s *Spec, outDir string) error {
 		return err
 	}
 	// Some platforms (macOS) refuse to rename onto an empty directory.
-	// os.Remove on a directory is rmdir: it fails if anything appeared.
-	if err := os.Remove(outDir); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	// Use rmdir directly: os.Remove could unlink a file created after the check.
+	if err := removeEmptyOutput(outDir); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("%w: %s: %v", ErrOutputExists, outDir, err)
 	}
 	if err := os.Rename(stage, outDir); err != nil {
@@ -248,3 +249,6 @@ func readBounded(p string, limit int64) ([]byte, error) {
 	defer f.Close()
 	return io.ReadAll(io.LimitReader(f, limit))
 }
+
+// removeEmptyOutput removes only an empty output directory before publication.
+func removeEmptyOutput(dir string) error { return syscall.Rmdir(dir) }

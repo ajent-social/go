@@ -12,13 +12,14 @@ import (
 var resultSchema = map[string]any{
 	"type": "object",
 	"properties": map[string]any{
-		"argv":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-		"exit_code": map[string]any{"type": "integer"},
-		"stdout":    map[string]any{"type": "string"},
-		"stderr":    map[string]any{"type": "string"},
-		"truncated": map[string]any{"type": "boolean"},
-		"timed_out": map[string]any{"type": "boolean"},
-		"canceled":  map[string]any{"type": "boolean"},
+		"argv":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		"exit_code":  map[string]any{"type": "integer"},
+		"stdout":     map[string]any{"type": "string"},
+		"stderr":     map[string]any{"type": "string"},
+		"truncated":  map[string]any{"type": "boolean"},
+		"timed_out":  map[string]any{"type": "boolean"},
+		"canceled":   map[string]any{"type": "boolean"},
+		"wait_error": map[string]any{"type": "string"},
 	},
 	"required": []string{"argv", "exit_code", "stdout", "stderr", "truncated", "timed_out", "canceled"},
 }

@@ -14,6 +14,7 @@ case "$1" in
   echo) shift; for a in "$@"; do printf '%s\n' "$a"; done; exit 0 ;;
   fail) echo "boom" >&2; exit 3 ;;
   sleep) sleep 30; exit 0 ;;
+  background) sleep 30 & exit 0 ;;
   spawn) sleep 30 & echo $! > "$2"; wait; exit 0 ;;
   hold) touch "$2/$$"; sleep 30; exit 0 ;;
   big) head -c 300000 /dev/zero | tr '\000' a; head -c 300000 /dev/zero | tr '\000' b >&2; exit 0 ;;

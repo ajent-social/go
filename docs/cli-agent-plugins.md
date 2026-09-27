@@ -38,7 +38,7 @@ and refuses to start otherwise. There is no fallback executable.
   `notes`).
 
 Parsing rejects unknown fields, duplicate keys at any depth, trailing values,
-oversize input, malformed identifiers and URLs, control characters, duplicate
+oversize input (256 KiB source or 96 KiB canonical inline JSON), malformed identifiers and URLs, control characters, duplicate
 tool/input names and flags, flag+positional ambiguity, boolean positionals,
 positional enum values or integers that could start with `-`, and
 `read_only && destructive`. A spec is rejected before anything is written or
@@ -70,7 +70,9 @@ executed.
   immediately, not queued.
 - Results are `{argv, exit_code, stdout, stderr, truncated, timed_out,
   canceled}` as structured content plus JSON text, with `isError` for non-zero
-  exit, timeout or cancellation. No usage or cost is reported because the
+  exit, timeout or cancellation. A failed process wait adds `wait_error` and
+  also sets `isError`, including when a successful child leaves output pipes
+  open past the collection grace period. No usage or cost is reported because the
   server does not know it.
 
 Unix only (process groups). Other platforms compile and fail at startup.
