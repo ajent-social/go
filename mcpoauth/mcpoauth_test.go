@@ -915,16 +915,16 @@ func TestRevocation(t *testing.T) {
 	ctx := context.Background()
 	_, body := f.exchangeBody(f.issueCode(mcpoauth.Approval{Subject: "u"}), nil)
 	tok := body["access_token"].(string)
-	if rr := f.form("/oauth/revoke", url.Values{"token": {"unknown"}}); rr.Code != 200 || rr.Header().Get("Cache-Control") != "no-store" {
+	if rr := f.form("/oauth/revoke", url.Values{"token": {"unknown"}, "client_id": {f.client.ID}}); rr.Code != 200 || rr.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("unknown token must be 200: %d", rr.Code)
 	}
-	if rr := f.form("/oauth/revoke", url.Values{"token": {tok}}); rr.Code != 200 {
+	if rr := f.form("/oauth/revoke", url.Values{"token": {tok}, "client_id": {f.client.ID}}); rr.Code != 200 {
 		t.Fatal(rr.Code)
 	}
 	if _, err := f.srv.Verify(ctx, tok); !errors.Is(err, mcpoauth.ErrDenied) {
 		t.Fatalf("revoked token verified: %v", err)
 	}
-	if rr := f.form("/oauth/revoke", url.Values{"token": {tok}}); rr.Code != 200 {
+	if rr := f.form("/oauth/revoke", url.Values{"token": {tok}, "client_id": {f.client.ID}}); rr.Code != 200 {
 		t.Fatal("revoke must be idempotent")
 	}
 	if rr := f.form("/oauth/revoke", url.Values{}); rr.Code != 400 {
@@ -934,7 +934,7 @@ func TestRevocation(t *testing.T) {
 		t.Fatal(rr.Code)
 	}
 	f.store.fail = errors.New("disk")
-	if rr := f.form("/oauth/revoke", url.Values{"token": {tok}}); rr.Code != 500 {
+	if rr := f.form("/oauth/revoke", url.Values{"token": {tok}, "client_id": {f.client.ID}}); rr.Code != 500 {
 		t.Fatal("store failure must not be reported as success")
 	}
 	f.store.fail = nil

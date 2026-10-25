@@ -20,10 +20,11 @@ const (
 )
 
 type metadata struct {
+	ClientIDMetadataDocumentSupported bool     `json:"client_id_metadata_document_supported,omitempty"`
 	Issuer                            string   `json:"issuer"`
 	AuthorizationEndpoint             string   `json:"authorization_endpoint"`
 	TokenEndpoint                     string   `json:"token_endpoint"`
-	RegistrationEndpoint              string   `json:"registration_endpoint"`
+	RegistrationEndpoint              string   `json:"registration_endpoint,omitempty"`
 	RevocationEndpoint                string   `json:"revocation_endpoint"`
 	ResponseTypesSupported            []string `json:"response_types_supported"`
 	GrantTypesSupported               []string `json:"grant_types_supported"`
@@ -51,11 +52,16 @@ func grantTypes(cfg Config) []string {
 // buildMetadata pre-marshals both discovery documents so the request path
 // never marshals. refresh_token is advertised only when it is served.
 func buildMetadata(cfg Config) ([]byte, []byte, error) {
+	registration := cfg.Issuer + cfg.RegisterPath
+	if cfg.DisableDynamicRegistration {
+		registration = ""
+	}
 	m, err := json.Marshal(metadata{
+		ClientIDMetadataDocumentSupported: cfg.EnableClientIDMetadataDocuments,
 		Issuer:                            cfg.Issuer,
 		AuthorizationEndpoint:             cfg.Issuer + cfg.AuthorizePath,
 		TokenEndpoint:                     cfg.Issuer + cfg.TokenPath,
-		RegistrationEndpoint:              cfg.Issuer + cfg.RegisterPath,
+		RegistrationEndpoint:              registration,
 		RevocationEndpoint:                cfg.Issuer + cfg.RevokePath,
 		ResponseTypesSupported:            []string{"code"},
 		GrantTypesSupported:               grantTypes(cfg),
@@ -197,9 +203,9 @@ func (s *Server) AuthorizeHandler(consent func(w http.ResponseWriter, r *http.Re
 			http.Error(w, "missing client_id or redirect_uri", http.StatusBadRequest)
 			return
 		}
-		client, err := s.store.Client(r.Context(), p["client_id"])
+		client, err := s.resolveClient(r.Context(), p["client_id"])
 		if err != nil {
-			if !errors.Is(err, ErrNotFound) {
+			if !errors.Is(err, ErrNotFound) && !errors.Is(err, ErrDenied) {
 				s.log.Error("oauth: lookup client", "error", err)
 				http.Error(w, "server error", http.StatusInternalServerError)
 				return
@@ -380,7 +386,7 @@ func (s *Server) tokenRefresh(w http.ResponseWriter, r *http.Request, p map[stri
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrReused):
-			s.log.Warn("oauth: refresh token reuse detected; grant revoked", "client_id", p["client_id"])
+			s.log.Warn("oauth: refresh token reuse detected; grant revoked")
 			writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "refresh token is invalid, expired or revoked")
 		case errors.Is(err, ErrDenied), errors.Is(err, ErrNotFound), errors.Is(err, ErrExpired):
 			writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "refresh token is invalid, expired or revoked")
@@ -393,7 +399,8 @@ func (s *Server) tokenRefresh(w http.ResponseWriter, r *http.Request, p map[stri
 	writeIssued(w, out)
 }
 
-// RevokeHandler serves RFC 7009 for access and refresh tokens; either revokes
+// RevokeHandler requires a public client_id and serves RFC 7009 for access
+// and refresh tokens bound to that client; either revokes
 // the whole grant. token_type_hint is accepted and ignored. Unknown and
 // revoked tokens look identical.
 func (s *Server) RevokeHandler() http.Handler {
@@ -405,11 +412,11 @@ func (s *Server) RevokeHandler() http.Handler {
 			return
 		}
 		p, err := postForm(w, r)
-		if err != nil || p["token"] == "" {
-			writeOAuthError(w, http.StatusBadRequest, "invalid_request", "token parameter required")
+		if err != nil || p["token"] == "" || !validPublicClientID(p["client_id"]) {
+			writeOAuthError(w, http.StatusBadRequest, "invalid_request", "token and valid client_id required")
 			return
 		}
-		if err := s.Revoke(r.Context(), p["token"]); err != nil {
+		if err := s.revokeClientToken(r.Context(), p["token"], p["client_id"]); err != nil {
 			s.log.Error("oauth: revoke token", "error", err)
 			writeOAuthError(w, http.StatusInternalServerError, "server_error", "could not revoke token")
 			return
@@ -441,6 +448,10 @@ type registrationResponse struct {
 // belongs to the application at the mount point.
 func (s *Server) RegisterHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.DisableDynamicRegistration {
+			http.NotFound(w, r)
+			return
+		}
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
 			writeOAuthError(w, http.StatusMethodNotAllowed, "invalid_request", "POST required")
