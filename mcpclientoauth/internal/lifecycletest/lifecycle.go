@@ -19,6 +19,7 @@ import (
 // substitutes a fixture for the SQL adapter supplied by its SQL test caller.
 func Run(t *testing.T, a, b oauth.LifecycleStore) {
 	t.Helper()
+	t.Run("refresh-response", func(t *testing.T) { responseCases(t, a, b) })
 	for _, scenario := range []string{"refresh-disconnect", "refresh-reconnect", "callback-disconnect", "callback-reconnect", "concurrent-refresh", "ambiguous-refresh"} {
 		t.Run(scenario, func(t *testing.T) { run(t, a, b, scenario) })
 	}
