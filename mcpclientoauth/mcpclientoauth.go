@@ -24,11 +24,14 @@ import (
 )
 
 var (
-	ErrInvalid  = errors.New("mcpclientoauth: invalid input")
-	ErrNotFound = errors.New("mcpclientoauth: not found")
-	ErrExists   = errors.New("mcpclientoauth: already exists")
-	ErrExpired  = errors.New("mcpclientoauth: expired")
-	ErrDenied   = errors.New("mcpclientoauth: denied")
+	ErrInvalid          = errors.New("mcpclientoauth: invalid input")
+	ErrNotFound         = errors.New("mcpclientoauth: not found")
+	ErrExists           = errors.New("mcpclientoauth: already exists")
+	ErrExpired          = errors.New("mcpclientoauth: expired")
+	ErrDenied           = errors.New("mcpclientoauth: denied")
+	ErrUnsupportedStore = errors.New("mcpclientoauth: lifecycle store required")
+	ErrConflict         = errors.New("mcpclientoauth: stale connection or token")
+	ErrRefreshUncertain = errors.New("mcpclientoauth: refresh claimed; reconnect required if outcome unavailable")
 )
 
 const (
@@ -51,6 +54,12 @@ type ServerConfig struct {
 	ClientSecret string // optional for public clients
 	RedirectURL  string
 	Scopes       []string
+	// Resource is an explicit canonical audience URL. Empty preserves generic
+	// OAuth compatibility; MCP callers must set it.
+	Resource string
+	// ExpectedIssuer enables mandatory exact RFC 9207 callback issuer checking.
+	// Empty retains legacy callbacks without iss; discovery belongs to the SDK.
+	ExpectedIssuer string
 }
 
 // Config binds servers and TTLs.
@@ -62,10 +71,9 @@ type Config struct {
 }
 
 // Pending is storage-only. StateDigest is SHA-256 of the browser state.
-// Verifier is the PKCE verifier plaintext held only until Exchange; stores
-// should treat it as secret (memory ok; sqlstore encrypts via app or stores
-// only for short TTL — this package stores verifier in Pending for the
-// consume-once window).
+// Verifier is a secret stored until consume-once Exchange. The SQL adapter
+// stores it as plaintext: callers own database access, encryption at rest and
+// expired-pending retention. ExpiresAt enforces use expiry, not physical deletion.
 type Pending struct {
 	StateDigest [32]byte
 	ServerID    string
@@ -73,6 +81,7 @@ type Pending struct {
 	Verifier    string
 	ExpiresAt   time.Time
 	CreatedAt   time.Time
+	Generation  string
 }
 
 // TokenRecord is storage-only. Ciphertext is an application-sealed blob
@@ -83,6 +92,8 @@ type TokenRecord struct {
 	Ciphertext []byte
 	ExpiresAt  time.Time // access-token expiry hint for refresh margin
 	UpdatedAt  time.Time
+	Generation string // opaque connection epoch; never reuse
+	Version    int64  // store-managed CAS revision
 }
 
 // TokenSecrets is the plaintext payload applications seal into Ciphertext.
@@ -108,10 +119,30 @@ type Store interface {
 	DeleteToken(ctx context.Context, ownerID, serverID string) error
 }
 
+// LifecycleStore is the v2 atomic coordination contract. All operations for a
+// binding must linearize across every replica using that store. Claims never
+// expire: a provider may have rotated a token even when its response was lost.
+// Legacy PutToken must fail closed; DeleteToken must durably invalidate.
+// See docs/mcp-client-oauth.md for migration and state transition requirements.
+type LifecycleStore interface {
+	Store
+	// BeginConnection replaces any prior generation with an empty connection.
+	BeginConnection(ctx context.Context, ownerID, serverID, generation string) error
+	// ClaimRefresh CASes a ready record to claimed and advances its version.
+	// Return ErrConflict for a stale snapshot or an already-claimed record.
+	ClaimRefresh(context.Context, TokenRecord) (TokenRecord, error)
+	// CompleteToken CASes empty or claimed to ready and advances its version.
+	// It must never insert or overwrite a different generation/revision.
+	CompleteToken(context.Context, TokenRecord) error
+	// Disconnect atomically returns the old record and leaves an invalidated
+	// binding, including when no token exists. Outstanding completions fail.
+	Disconnect(ctx context.Context, ownerID, serverID string) (TokenRecord, error)
+}
+
 // Service runs client OAuth flows.
 type Service struct {
 	cfg     Config
-	store   Store
+	store   LifecycleStore
 	seal    SealFunc
 	open    OpenFunc
 	servers map[string]ServerConfig
@@ -124,6 +155,10 @@ type Service struct {
 func New(cfg Config, store Store, seal SealFunc, open OpenFunc) (*Service, error) {
 	if store == nil || seal == nil || open == nil {
 		return nil, ErrInvalid
+	}
+	lifecycle, ok := store.(LifecycleStore)
+	if !ok {
+		return nil, ErrUnsupportedStore
 	}
 	ttl := cfg.StateTTL
 	if ttl == 0 {
@@ -146,16 +181,23 @@ func New(cfg Config, store Store, seal SealFunc, open OpenFunc) (*Service, error
 	}
 	s := &Service{
 		cfg:     cfg,
-		store:   store,
+		store:   lifecycle,
 		seal:    seal,
 		open:    open,
 		servers: map[string]ServerConfig{},
 		http:    cfg.HTTPClient,
 		now:     time.Now,
 	}
-	if s.http == nil {
-		s.http = &http.Client{Timeout: 15 * time.Second}
+	// Clone the client; preserve its Transport/TLS and never mutate the caller.
+	client := http.Client{}
+	if s.http != nil {
+		client = *s.http
 	}
+	if client.Timeout <= 0 || client.Timeout > 15*time.Second {
+		client.Timeout = 15 * time.Second
+	}
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	s.http = &client
 	for _, sc := range cfg.Servers {
 		if err := validateServer(sc); err != nil {
 			return nil, fmt.Errorf("server %s: %w", sc.ID, err)
@@ -182,12 +224,43 @@ func validateServer(sc ServerConfig) error {
 			return err
 		}
 	}
+	if sc.Resource != "" {
+		if err := validateCanonicalURL(sc.Resource); err != nil {
+			return err
+		}
+	}
+	if sc.ExpectedIssuer != "" {
+		if err := validateCanonicalURL(sc.ExpectedIssuer); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Canonical URLs are supplied by the caller rather than silently rewritten:
+// audience and issuer comparisons are exact. Queries are permitted for resources.
+func validateCanonicalURL(raw string) error {
+	if err := validateAbsoluteURL(raw, true); err != nil {
+		return err
+	}
+	u, _ := url.Parse(raw)
+	for _, segment := range strings.Split(u.Path, "/") {
+		if segment == "." || segment == ".." {
+			return fmt.Errorf("%w: URL has dot segments", ErrInvalid)
+		}
+	}
+	if u.User != nil || u.Opaque != "" || u.String() != raw ||
+		u.Host != strings.ToLower(u.Host) || u.Hostname() == "" ||
+		strings.HasSuffix(u.Hostname(), ".") || u.Port() == "443" && u.Scheme == "https" ||
+		u.Port() == "80" && u.Scheme == "http" {
+		return fmt.Errorf("%w: URL must be canonical without userinfo or default port", ErrInvalid)
+	}
 	return nil
 }
 
 func validateAbsoluteURL(raw string, httpsOrLoopback bool) error {
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme == "" || u.Host == "" || u.Fragment != "" {
+	if err != nil || u.Scheme == "" || u.Host == "" || u.User != nil || u.Fragment != "" || strings.Contains(raw, "#") {
 		return fmt.Errorf("%w: URL must be absolute without fragment", ErrInvalid)
 	}
 	if !httpsOrLoopback {
@@ -233,8 +306,16 @@ func (s *Service) Start(ctx context.Context, ownerID, serverID string) (StartRes
 	if err != nil {
 		return StartResult{}, err
 	}
+	generation, err := randomToken(stateBytes)
+	if err != nil {
+		return StartResult{}, err
+	}
+	if err := s.store.BeginConnection(ctx, ownerID, serverID, generation); err != nil {
+		return StartResult{}, err
+	}
 	now := s.now().UTC()
 	pending := Pending{
+		Generation:  generation,
 		StateDigest: sha256.Sum256([]byte(state)),
 		ServerID:    serverID,
 		OwnerID:     ownerID,
@@ -246,8 +327,14 @@ func (s *Service) Start(ctx context.Context, ownerID, serverID string) (StartRes
 		return StartResult{}, err
 	}
 	challenge := pkceChallenge(verifier)
-	q := url.Values{}
+	authURL, _ := url.Parse(sc.AuthURL) // validated at construction
+	q := authURL.Query()
+	q.Del("resource")
+	q.Del("scope")
 	q.Set("response_type", "code")
+	if sc.Resource != "" {
+		q.Set("resource", sc.Resource)
+	}
 	q.Set("client_id", sc.ClientID)
 	q.Set("redirect_uri", sc.RedirectURL)
 	q.Set("state", state)
@@ -256,13 +343,8 @@ func (s *Service) Start(ctx context.Context, ownerID, serverID string) (StartRes
 	if len(sc.Scopes) > 0 {
 		q.Set("scope", strings.Join(sc.Scopes, " "))
 	}
-	authURL := sc.AuthURL
-	if strings.Contains(authURL, "?") {
-		authURL += "&" + q.Encode()
-	} else {
-		authURL += "?" + q.Encode()
-	}
-	return StartResult{AuthURL: authURL, State: state}, nil
+	authURL.RawQuery = q.Encode()
+	return StartResult{AuthURL: authURL.String(), State: state}, nil
 }
 
 // ExchangeInput is the callback after IdP redirect.
@@ -270,6 +352,7 @@ type ExchangeInput struct {
 	OwnerID string
 	State   string
 	Code    string
+	Issuer  string // callback iss; required when ExpectedIssuer is configured
 }
 
 // Exchange consumes pending state, exchanges the code, and stores sealed tokens.
@@ -294,6 +377,16 @@ func (s *Service) Exchange(ctx context.Context, in ExchangeInput) error {
 	if !ok {
 		return ErrNotFound
 	}
+	if sc.ExpectedIssuer != "" {
+		if in.Issuer != sc.ExpectedIssuer {
+			return ErrDenied
+		}
+	} else if in.Issuer != "" {
+		return ErrDenied
+	}
+	if pending.Generation == "" {
+		return ErrConflict
+	}
 	secrets, expires, err := s.tokenRequest(ctx, sc, url.Values{
 		"grant_type":    {"authorization_code"},
 		"code":          {in.Code},
@@ -309,7 +402,8 @@ func (s *Service) Exchange(ctx context.Context, in ExchangeInput) error {
 		return fmt.Errorf("seal token: %w", err)
 	}
 	now := s.now().UTC()
-	return s.store.PutToken(ctx, TokenRecord{
+	return s.store.CompleteToken(ctx, TokenRecord{
+		Generation: pending.Generation, Version: 0,
 		OwnerID: in.OwnerID, ServerID: pending.ServerID,
 		Ciphertext: ct, ExpiresAt: expires, UpdatedAt: now,
 	})
@@ -338,6 +432,11 @@ func (s *Service) ValidToken(ctx context.Context, ownerID, serverID string) (Tok
 	if !ok {
 		return TokenSecrets{}, ErrNotFound
 	}
+	rec, err = s.store.ClaimRefresh(ctx, rec)
+	if err != nil {
+		return TokenSecrets{}, err
+	}
+	// Never release this claim on error: even a network error can hide rotation.
 	refreshed, expires, err := s.tokenRequest(ctx, sc, url.Values{
 		"grant_type":    {"refresh_token"},
 		"refresh_token": {secrets.RefreshToken},
@@ -354,7 +453,8 @@ func (s *Service) ValidToken(ctx context.Context, ownerID, serverID string) (Tok
 		return TokenSecrets{}, err
 	}
 	now := s.now().UTC()
-	if err := s.store.PutToken(ctx, TokenRecord{
+	if err := s.store.CompleteToken(ctx, TokenRecord{
+		Generation: rec.Generation, Version: rec.Version,
 		OwnerID: ownerID, ServerID: serverID,
 		Ciphertext: ct, ExpiresAt: expires, UpdatedAt: now,
 	}); err != nil {
@@ -363,23 +463,24 @@ func (s *Service) ValidToken(ctx context.Context, ownerID, serverID string) (Tok
 	return refreshed, nil
 }
 
-// Revoke best-effort calls the provider revoke endpoint then deletes locally.
+// Revoke invalidates locally before best-effort provider revocation. A successful
+// return establishes local disconnection only, not provider revocation.
 func (s *Service) Revoke(ctx context.Context, ownerID, serverID string) error {
-	rec, err := s.store.LookupToken(ctx, ownerID, serverID)
+	if ownerID == "" || serverID == "" {
+		return ErrInvalid
+	}
+	rec, err := s.store.Disconnect(ctx, ownerID, serverID)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil
-		}
 		return err
 	}
 	sc, ok := s.servers[serverID]
-	if ok && sc.RevokeURL != "" {
+	if ok && sc.RevokeURL != "" && len(rec.Ciphertext) != 0 {
 		secrets, openErr := s.open(rec.Ciphertext)
 		if openErr == nil {
 			_ = s.revokeAtProvider(ctx, sc, secrets)
 		}
 	}
-	return s.store.DeleteToken(ctx, ownerID, serverID)
+	return nil
 }
 
 func (s *Service) revokeAtProvider(ctx context.Context, sc ServerConfig, secrets TokenSecrets) error {
@@ -404,13 +505,19 @@ func (s *Service) revokeAtProvider(ctx context.Context, sc ServerConfig, secrets
 		return err
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return ErrDenied
+	}
 	return nil
 }
 
 func (s *Service) tokenRequest(ctx context.Context, sc ServerConfig, form url.Values) (TokenSecrets, time.Time, error) {
 	if sc.ClientSecret != "" {
 		form.Set("client_secret", sc.ClientSecret)
+	}
+	if sc.Resource != "" {
+		form.Set("resource", sc.Resource)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sc.TokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
