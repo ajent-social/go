@@ -133,6 +133,25 @@ using the SDK's default token source does not establish multi-replica safety.
 SDK Streamable HTTP, discovery, registration, resource/issuer handling and
 consumer denied-path interoperability remain separate, unexecuted release gates.
 
+## Token response parsing
+
+An omitted `refresh_token` in a successful refresh response retains the existing
+refresh token, for providers that do not rotate on every refresh. This does not
+apply to an explicitly present value: null, non-string, empty, control-character
+or non-ASCII refresh credentials are rejected. A present `access_token` must
+likewise be a nonempty printable ASCII string; it is always required. A present
+`token_type` must be a nonempty RFC 6749 type-name or absolute URI, and a present
+`scope` must be a printable ASCII string (empty scope is permitted). Omitted
+optional token_type and scope retain the earlier compatibility behavior; no
+Bearer-only token interpretation policy is imposed here.
+
+Malformed credential responses return an error before sealing or completing the
+token write. During refresh, the durable claim remains fenced because the
+provider may already have consumed the old refresh token. Neither the bad
+response nor a subsequent ValidToken call resets the connection to ready or
+replays the old token. Reconnect remains the recovery path for an unavailable
+outcome. Parser errors identify the field, never the credential value.
+
 ## Credential endpoint security
 
 Token and revocation POSTs never follow HTTP redirects, including when the
@@ -160,8 +179,12 @@ For an authorized check runner:
 ```sh
 go test -race -count=1 ./mcpclientoauth/...
 go vet ./mcpclientoauth/...
+# Narrow malformed-response/omission regressions (also included above):
+go test -race -count=1 ./mcpclientoauth -run '^TestMemoryLifecycle/refresh-response$'
 # Set DSN to an authorized disposable PostgreSQL-compatible database first.
 AMSL_MCP_CLIENT_SQL_REQUIRED=1 go test -race -count=1 ./mcpclientoauth/sqlstore
+# Narrow real-SQL response regressions, with the same DSN requirement:
+AMSL_MCP_CLIENT_SQL_REQUIRED=1 go test -race -count=1 ./mcpclientoauth/sqlstore -run '^TestSQLLifecycle/refresh-response$'
 ```
 
 `AMSL_SQLSTORE_TEST_DSN` selects the real SQL service. Supplying it makes failures
@@ -174,7 +197,9 @@ Do not point tests at a production database.
 Regression sources cover: blocked refresh versus disconnect; old refresh and
 callback versus reconnect; callback versus disconnect before any token exists;
 two coordinators synchronized after reading the same old refresh token with
-one outbound POST; lost rotating response with no replay; credential POST
+one outbound POST; lost rotating response with no replay; malformed credential
+responses that remain fenced with one old-token POST; omitted refresh-token
+retention and valid replacement persistence; credential POST
 redirects for code/refresh/revoke (301/302/303/307/308) with a secret collector
 receiving zero requests; resource validation/propagation; expected issuer denial
 before POST; and unsupported-store denial. The rotating provider fixture is

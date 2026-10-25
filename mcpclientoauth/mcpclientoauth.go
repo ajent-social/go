@@ -541,16 +541,27 @@ func (s *Service) tokenRequest(ctx context.Context, sc ServerConfig, form url.Va
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return TokenSecrets{}, time.Time{}, fmt.Errorf("%w: invalid token JSON", ErrDenied)
 	}
-	access := jsonString(raw, "access_token")
-	if access == "" {
-		return TokenSecrets{}, time.Time{}, fmt.Errorf("%w: missing access_token", ErrDenied)
+	access, err := responseString(raw, "access_token", true, false)
+	if err != nil {
+		return TokenSecrets{}, time.Time{}, err
 	}
-	secrets := TokenSecrets{
-		AccessToken:  access,
-		RefreshToken: jsonString(raw, "refresh_token"),
-		TokenType:    jsonString(raw, "token_type"),
+	refresh, err := responseString(raw, "refresh_token", false, false)
+	if err != nil {
+		return TokenSecrets{}, time.Time{}, err
 	}
-	if scope := jsonString(raw, "scope"); scope != "" {
+	tokenType, err := responseString(raw, "token_type", false, false)
+	if err != nil {
+		return TokenSecrets{}, time.Time{}, err
+	}
+	if tokenType != "" && !validTokenType(tokenType) {
+		return TokenSecrets{}, time.Time{}, fmt.Errorf("%w: invalid token_type", ErrDenied)
+	}
+	scope, err := responseString(raw, "scope", false, true)
+	if err != nil {
+		return TokenSecrets{}, time.Time{}, err
+	}
+	secrets := TokenSecrets{AccessToken: access, RefreshToken: refresh, TokenType: tokenType}
+	if scope != "" {
 		secrets.Scopes = strings.Fields(scope)
 	}
 	expires := s.now().UTC().Add(time.Hour)
@@ -563,16 +574,49 @@ func (s *Service) tokenRequest(ctx context.Context, sc ServerConfig, form url.Va
 	return secrets, expires, nil
 }
 
-func jsonString(m map[string]json.RawMessage, key string) string {
-	v, ok := m[key]
-	if !ok {
-		return ""
+// responseString distinguishes an omitted optional field from a malformed
+// present field. JSON null is not a string. Credential values use RFC 6749's
+// VSCHAR grammar; never include the response or its values in an error.
+func responseString(m map[string]json.RawMessage, key string, required, allowEmpty bool) (string, error) {
+	raw, present := m[key]
+	if !present {
+		if required {
+			return "", fmt.Errorf("%w: missing %s", ErrDenied, key)
+		}
+		return "", nil
 	}
-	var s string
-	if json.Unmarshal(v, &s) != nil {
-		return ""
+	var value *string
+	if err := json.Unmarshal(raw, &value); err != nil || value == nil {
+		return "", fmt.Errorf("%w: invalid %s type", ErrDenied, key)
 	}
-	return s
+	if !allowEmpty && *value == "" {
+		return "", fmt.Errorf("%w: empty %s", ErrDenied, key)
+	}
+	for _, c := range *value {
+		if c < 0x20 || c > 0x7e {
+			return "", fmt.Errorf("%w: invalid %s characters", ErrDenied, key)
+		}
+	}
+	return *value, nil
+}
+
+// RFC 6749 token-type is a type-name or an absolute URI. Names are deliberately
+// not restricted to Bearer: token interpretation remains the caller's policy.
+func validTokenType(value string) bool {
+	name := true
+	for _, c := range value {
+		if c <= 0x20 || c > 0x7e {
+			return false
+		}
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '.' || c == '_') {
+			name = false
+		}
+	}
+	if name {
+		return true
+	}
+	u, err := url.Parse(value)
+	return err == nil && u.IsAbs()
 }
 
 func pkceChallenge(verifier string) string {
