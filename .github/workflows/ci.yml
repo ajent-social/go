@@ -10,7 +10,7 @@ concurrency:
 jobs:
   # Reuses delivery.go-validation. Pin is immutable; bump deliberately.
   credential-contracts:
-    uses: ajent-social/workflows/.github/workflows/go-validation.yml@2377e766f704dfe984a1e589933b91f2bc3c50a1
+    uses: ajent-social/workflows/.github/workflows/go-validation.yml@680caa87f92395cb034df6a9b2dc95b517134209
     with:
       enable-postgres: true
       timeout-minutes: 10
