@@ -18,17 +18,34 @@ import (
 )
 
 type bearerTransport struct {
-	token string
-	base  http.RoundTripper
+	origin string
+	token  string
+	base   http.RoundTripper
 }
 
 func (b bearerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	r = r.Clone(r.Context())
 	r.Header = r.Header.Clone()
+	if b.origin != "" {
+		r.Header.Set("Origin", b.origin)
+	}
 	if b.token != "" {
 		r.Header.Set("Authorization", "Bearer "+b.token)
 	}
 	return b.base.RoundTrip(r)
+}
+
+// This is application composition, not an exported AMSL middleware API.
+// Validate every PRESENT Origin before any method/auth/transport handling.
+func withConfiguredOrigin(configuredOrigin string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origins := r.Header.Values("Origin")
+		if len(origins) > 0 && (len(origins) != 1 || origins[0] != configuredOrigin) {
+			http.Error(w, "forbidden origin", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func TestSDKStreamableHTTPWithIssuedPKCEBearer(t *testing.T) {
@@ -100,7 +117,8 @@ func TestSDKStreamableHTTPWithIssuedPKCEBearer(t *testing.T) {
 	stream := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{Stateless: true, MaxRequestBodyBytes: 4096})
 	protected := auth.RequireBearerToken(f.srv.TokenVerifier, &auth.RequireBearerTokenOptions{ResourceMetadataURL: issuer + "/.well-known/oauth-protected-resource", Scopes: []string{"read"}})(stream)
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", http.NewCrossOriginProtection().Handler(protected))
+	const configuredOrigin = "https://app.example.com"
+	mux.Handle("/mcp", withConfiguredOrigin(configuredOrigin, protected))
 	mux.Handle("/.well-known/oauth-authorization-server", f.srv.MetadataHandler())
 	mux.Handle("/.well-known/oauth-protected-resource", f.srv.ProtectedResourceHandler())
 	ts := httptest.NewServer(mux)
@@ -118,9 +136,64 @@ func TestSDKStreamableHTTPWithIssuedPKCEBearer(t *testing.T) {
 			t.Fatal("discovery", path, err)
 		}
 	}
-	connect := func(raw string) (*mcp.ClientSession, error) {
+	connect := func(raw string, origins ...string) (*mcp.ClientSession, error) {
+		origin := ""
+		if len(origins) > 0 {
+			origin = origins[0]
+		}
 		client := mcp.NewClient(&mcp.Implementation{Name: "local-client", Version: "1"}, nil)
-		return client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: ts.URL + "/mcp", HTTPClient: &http.Client{Transport: bearerTransport{raw, ts.Client().Transport}}}, nil)
+		return client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: ts.URL + "/mcp", HTTPClient: &http.Client{Transport: bearerTransport{origin: origin, token: raw, base: ts.Client().Transport}}}, nil)
+	}
+	// Invalid and duplicate Origins must fail before safe as well as unsafe
+	// method handling. Even a duplicated matching value is rejected.
+	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodPost} {
+		for _, origins := range [][]string{{"https://cross-site.invalid"}, {configuredOrigin, configuredOrigin}, {configuredOrigin, "https://cross-site.invalid"}, {""}, {"null"}, {configuredOrigin + ", " + configuredOrigin}} {
+			req, _ := http.NewRequestWithContext(ctx, method, ts.URL+"/mcp", strings.NewReader("{}"))
+			req.Header.Set("Authorization", "Bearer "+token)
+			for _, origin := range origins {
+				req.Header.Add("Origin", origin)
+			}
+			resp, err := ts.Client().Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusForbidden {
+				t.Fatalf("%s origins %q: got %d want 403", method, origins, resp.StatusCode)
+			}
+			if callbacks.Load() != 0 || effects.Load() != 0 {
+				t.Fatal("origin rejection reached business callback")
+			}
+		}
+		if method != http.MethodPost {
+			for _, origin := range []string{"", configuredOrigin} {
+				req, _ := http.NewRequestWithContext(ctx, method, ts.URL+"/mcp", nil)
+				req.Header.Set("Authorization", "Bearer "+token)
+				if origin != "" {
+					req.Header.Set("Origin", origin)
+				}
+				resp, err := ts.Client().Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				resp.Body.Close()
+				// Origin accepted: the stateless SDK then rejects safe methods with 405.
+				if resp.StatusCode != http.StatusMethodNotAllowed {
+					t.Fatalf("%s allowed origin %q: got %d want SDK 405", method, origin, resp.StatusCode)
+				}
+			}
+		}
+	}
+	// The official client initializes and lists tools using the configured Origin.
+	// The main session below exercises absent Origin for nonbrowser clients.
+	originSession, err := connect(token, configuredOrigin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originTools, err := originSession.ListTools(ctx, &mcp.ListToolsParams{})
+	originSession.Close()
+	if err != nil || len(originTools.Tools) != 1 {
+		t.Fatal("matching configured Origin rejected", err)
 	}
 	for _, raw := range []string{"", "wrong"} {
 		session, err := connect(raw)

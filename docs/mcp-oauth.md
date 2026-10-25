@@ -271,7 +271,12 @@ Source regressions include special-address and mixed-answer rejection, local
 trusted TLS CIMD/PKCE flow, stale redirect denial, URL/store collision rejection,
 malformed documents and bounded responses, client-bound access/refresh
 revocation, and official SDK client discovery/list/call with issued bearer
-tokens, current application denial, Origin/body bounds and bearer revocation.
+tokens, current application denial, all-method validation against a fixed
+configured Origin, duplicate-Origin denial, body bounds, bearer revocation, and exact HTTP denial of expired valid-issued and
+insufficient-required-scope bearers before business callbacks. Missing Origin
+remains legal for nonbrowser clients. Standard CrossOriginProtection alone does
+not validate Origin on safe methods. The SDK integration is stateless; stateful
+session behavior remains explicitly unqualified.
 These are local fixtures, not public adoption or production conformance evidence.
 This refinement's source candidate was prepared without executing compilation,
 tests, services or network requests. Independent review and resource-qualified
