@@ -31,10 +31,21 @@ bearer := auth.RequireBearerToken(oauthServer.TokenVerifier,
         ResourceMetadataURL: "https://mcp.example.com/.well-known/oauth-protected-resource",
         Scopes: []string{"read"},
     })(stream)
-origins := http.NewCrossOriginProtection()
-// Default protection rejects cross-origin browser requests. Add only explicitly
-// trusted application origins if required; do not trust arbitrary request input.
-mux.Handle("/mcp", origins.Handler(bearer))
+// Fixed application configuration, never derived from request Host or Origin.
+const configuredOrigin = "https://app.example.com"
+originChecked := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    origins := r.Header.Values("Origin")
+    // Missing Origin is legal for nonbrowser clients. Any present value must
+    // be exactly one configured origin: reject empty, null, duplicate and
+    // comma-joined values, including duplicated matching origins.
+    if len(origins) > 0 && (len(origins) != 1 || origins[0] != configuredOrigin) {
+        http.Error(w, "forbidden origin", http.StatusForbidden)
+        return
+    }
+    bearer.ServeHTTP(w, r)
+})
+// This check precedes all method handling, including GET, HEAD and POST.
+mux.Handle("/mcp", originChecked)
 ```
 
 Use TLS at the public boundary, an explicit allowed Host policy and finite HTTP
@@ -42,8 +53,12 @@ server read/header/write/idle timeouts appropriate to streaming. Origin
 protection is not authentication and is not a substitute for the application's
 consent CSRF protection. Keep SDK body bounds positive; a negative value disables
 the SDK limit. The SDK's deprecated `CrossOriginProtection` option defaults to
-nil; the explicit standard HTTP middleware above is intentional. Configure
-trusted proxy forwarding separately; do not blindly trust forwarded Host headers.
+nil. `http.NewCrossOriginProtection` guards unsafe requests and does not validate
+present Origin headers on safe methods; it cannot replace the all-method check
+above. It may be added as a separate application CSRF layer with explicitly
+trusted origins. Never reflect request origins or infer the allowed origin from
+request Host. Configure trusted proxy forwarding separately; do not blindly
+trust forwarded Host headers.
 
 Every business-effect tool must require a current application authorization
 callback. It must deny when that callback or SDK identity is absent:
@@ -94,7 +109,16 @@ go test -race ./mcpoauth/...
 
 `TestSDKStreamableHTTPWithIssuedPKCEBearer` exercises the actual SDK client and
 server, local discovery documents, list/call, current application authorization,
-Origin/body boundaries and absent/wrong/revoked bearer denial.
+all-method fixed Origin validation (including duplicate headers), body bounds
+and absent/wrong/revoked bearer denial. Matching configured Origin and absent
+Origin both permit official SDK initialization/listing; safe methods then receive
+the stateless SDK's expected 405 rather than an Origin denial.
+`TestSDKHTTPExpiredAndInsufficientScopeBeforeBusinessCallback` issues real PKCE
+bearers, exercises a successful SDK tool call as a control, then requires exact
+HTTP 401 for expiry and HTTP 403 for insufficient required scope with zero
+business callbacks/effects. Expiry uses a private test clock, not fabricated
+token records or a production API change. These tests choose stateless protocol;
+stateful sessions and their lifecycle remain explicitly unqualified.
 `TestCIMDFullPKCEAndChangingRedirect` uses a local trusted TLS fixture and private
 DNS/dial seams, preserving the production address checks. All such results are
 local evidence only. Maintainer review, executed checks and independent consumer
