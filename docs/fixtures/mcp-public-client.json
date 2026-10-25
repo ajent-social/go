@@ -1,8 +1,8 @@
 {
-  "client_id": "https://raw.githubusercontent.com/ajent-social/go/main/docs/fixtures/mcp-public-client.json",
+  "client_id": "https://cdn.jsdelivr.net/gh/ajent-social/go@main/docs/fixtures/mcp-public-client.json",
   "client_name": "AMSL interoperability test fixture",
   "redirect_uris": [
-    "https://client.example.invalid/callback"
+    "https://client.example.invalid:7443/callback"
   ],
   "grant_types": [
     "authorization_code",
