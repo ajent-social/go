@@ -250,7 +250,7 @@ func TestRefreshExpiredFamilyAndRevocation(t *testing.T) {
 
 	// Revoking by refresh token kills the access token and vice versa.
 	access, refresh = f.issueTokens(mcpoauth.Approval{Subject: "u"})
-	if rr := f.form("/oauth/revoke", url.Values{"token": {refresh}, "token_type_hint": {"refresh_token"}}); rr.Code != 200 {
+	if rr := f.form("/oauth/revoke", url.Values{"token": {refresh}, "token_type_hint": {"refresh_token"}, "client_id": {f.client.ID}}); rr.Code != 200 {
 		t.Fatal(rr.Code)
 	}
 	if _, err := f.srv.Verify(ctx, access); !errors.Is(err, mcpoauth.ErrDenied) {

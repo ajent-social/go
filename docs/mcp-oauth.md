@@ -23,8 +23,11 @@ MCP server) with public PKCE clients:
   unless disabled, `refresh_token` with strict single-use rotation and
   reuse-triggered family revocation (new extension, not extracted; see
   provenance).
-- RFC 7009 revocation of access or refresh tokens; either revokes the whole
-  grant. Unknown tokens are indistinguishable from revoked ones.
+- RFC 7009 revocation of access or refresh tokens requires the public
+  `client_id`; either token revokes its whole grant only for that client.
+  Unknown, mismatched and revoked tokens receive indistinguishable success.
+  Missing or malformed client IDs receive direct HTTP 400. The trusted Go
+  `Server.Revoke` method retains its raw-token administrative semantics.
 - Opaque 256-bit access and refresh tokens stored only as SHA-256 digests;
   `Verify` returns subject, binding, scopes, client and a stable `GrantID`
   for the application, and consults the grant on every call.
@@ -199,3 +202,77 @@ Restoring a snapshot can resurrect used or revoked tokens. A product restore
 must invalidate all OAuth grants, codes and pending consent records before
 serving requests (or advance an external durable revocation epoch). The
 reference adapter cannot infer that its file came from a backup.
+
+
+## Optional client ID metadata documents
+
+`Config.EnableClientIDMetadataDocuments` enables HTTPS client ID metadata
+documents (CIMD). The default is false. Discovery advertises
+`client_id_metadata_document_supported` only when enabled.
+`Config.DisableDynamicRegistration` defaults to false; when true, discovery
+omits `registration_endpoint` and `RegisterHandler` returns 404 for every method.
+Existing opaque registrations continue to work. Neither option changes Store
+interfaces or requires a bbolt/SQL schema migration.
+
+URL-shaped client IDs never fall back to opaque registration storage. CIMD
+metadata is not stored as a registered client and is not cached. It is fetched
+at authorization, consent display and approval, where the original redirect is
+checked again. A bound code can be exchanged without fetching metadata. A
+changed document can invalidate pending consent; it cannot rewrite its redirect.
+A document changing immediately after validation remains an unavoidable remote
+publication race; it does not change the bound code or issued grant.
+
+This bounded profile requires an exact canonical HTTPS client ID with a
+nonempty path, lowercase ASCII host, no trailing host dot, credentials, encoded
+path aliases, query or fragment, and no port except 443. Documents require exact
+`client_id` equality, nonblank bounded `client_name`, bounded unique
+`redirect_uris`, and explicit `token_endpoint_auth_method: "none"`.
+Missing grant/response lists use OAuth defaults (`authorization_code`, `code`);
+explicit lists must be supported and include authorization code issuance.
+Error documents, duplicate JSON keys at any level, invalid UTF-8, trailing JSON,
+and nesting beyond 16 levels fail closed. Unknown extension members are ignored
+within these bounds. Redirects use the same configured exact-match policy as
+opaque clients; no document may relax it.
+
+Every DNS answer must pass a conservative public-address policy. Private,
+loopback, link-local, mapped IPv6, CGNAT, multicast, unspecified, documentation,
+benchmarking, transition and other special-purpose ranges are refused. IPv6
+must be in global unicast 2000::/3 and outside the excluded allocations. The
+transport dials a checked numeric address while TLS verifies the original
+hostname. There is no exported resolver, transport or HTTP client override,
+environment proxy, redirect following, HTTP/2 alternative, credential forwarding,
+or compression. Fetches require HTTP 200 and application/json, use a 64 KiB
+body limit, 16 KiB response-header limit, 5 second overall timeout and 3 second
+dial/TLS/header timeouts. Failures expose only a generic denial, never raw
+fetch URLs or transport errors. No address policy can predict future allocation
+changes; maintainers must review the conservative special-range list over time.
+Applications should rate-limit the authorization/consent boundary to bound
+aggregate outbound work. There is no global document cache.
+
+## Official SDK composition and evidence boundary
+
+`Server.TokenVerifier` has the official SDK `auth.TokenVerifier` signature.
+It returns SDK `TokenInfo` from `Verify`, preserves the complete `Identity` in
+`Extra`, and uses a domain-separated digest of subject, application binding,
+client, grant and resource for SDK `UserID`. Opaque tokens never enter `Extra`
+or `UserID`. `IdentityFromContext` reads SDK HTTP middleware context;
+`IdentityFromTokenInfo` reads a tool request's `Extra.TokenInfo`. Both accessors
+return copied scopes. Authentication does not grant current application rights.
+There is no combined handler or implicit authorization callback.
+
+See the [Streamable HTTP recipe](recipes/mcp-streamable-http.md) for official
+SDK middleware, Origin protection, finite request bodies and current application
+authorization at the business effect. The authorization reference is the
+[2026-07-28 MCP specification](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization).
+The recipe uses the existing pinned Go SDK v1.8.0; AMSL does not implement MCP
+wire transport, application login, identity ownership or permission policy.
+
+Source regressions include special-address and mixed-answer rejection, local
+trusted TLS CIMD/PKCE flow, stale redirect denial, URL/store collision rejection,
+malformed documents and bounded responses, client-bound access/refresh
+revocation, and official SDK client discovery/list/call with issued bearer
+tokens, current application denial, Origin/body bounds and bearer revocation.
+These are local fixtures, not public adoption or production conformance evidence.
+This refinement's source candidate was prepared without executing compilation,
+tests, services or network requests. Independent review and resource-qualified
+checks remain required before release or status promotion.

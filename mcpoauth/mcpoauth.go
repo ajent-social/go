@@ -63,10 +63,14 @@ const (
 // Config binds the server to one issuer and one resource. Nothing is ever
 // derived from request Host headers.
 type Config struct {
-	Issuer                 string
-	Resource               string
-	Scopes                 []string
-	AllowLoopbackRedirects bool
+	// EnableClientIDMetadataDocuments resolves HTTPS client IDs without registration.
+	EnableClientIDMetadataDocuments bool
+	// DisableDynamicRegistration disables the public registration endpoint.
+	DisableDynamicRegistration bool
+	Issuer                     string
+	Resource                   string
+	Scopes                     []string
+	AllowLoopbackRedirects     bool
 	// AllowLocalhostRedirects permits exact localhost HTTP callbacks with an
 	// explicit port for clients that cannot use numeric loopback. Disabled by
 	// default: localhost resolution is controlled by the client environment.
@@ -253,6 +257,7 @@ type Store interface {
 
 // Server is safe for concurrent use.
 type Server struct {
+	cimd     *cimdFetcher
 	cfg      Config
 	store    Store
 	log      *slog.Logger
@@ -520,7 +525,7 @@ func (s *Server) Consent(ctx context.Context, handle string) (ConsentRequest, er
 }
 
 func (s *Server) consentRequest(ctx context.Context, rec ConsentRecord) (ConsentRequest, error) {
-	client, err := s.store.Client(ctx, rec.ClientID)
+	client, err := s.resolveClient(ctx, rec.ClientID)
 	if err != nil {
 		return ConsentRequest{}, fmt.Errorf("resolve consent client: %w", err)
 	}
